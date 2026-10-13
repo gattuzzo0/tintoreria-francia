@@ -29,6 +29,8 @@ export type Order = {
   /** YYYY-MM-DD */
   deliveryDate: string;
   payment: PaymentMethod;
+  /** null en órdenes anteriores a la columna branch. */
+  branch: string | null;
   status: OrderStatus;
   /** Observaciones capturadas al recibir la orden. */
   notes: string;

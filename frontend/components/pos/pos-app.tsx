@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { AdminsView } from "./admins-view";
 import { AppNav, type View } from "./app-nav";
+import { BranchGate } from "./branch-gate";
 import { CatalogAdmin } from "./catalog-admin";
 import { CustomersView } from "./customers-view";
 import { LoginIntro } from "./login-intro";
@@ -18,7 +19,9 @@ import { TicketPanel } from "./ticket-panel";
 export function PosApp() {
   return (
     <PosProvider>
-      <PosShell />
+      <BranchGate>
+        <PosShell />
+      </BranchGate>
     </PosProvider>
   );
 }
@@ -28,6 +31,7 @@ function PosShell() {
   const { status, loadError, reload } = usePos();
   const [view, setView] = useState<View>("venta");
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
+  const [lookupKey, setLookupKey] = useState(0);
 
   const navigate = (v: View) => {
     setPendingPhone(null);
@@ -59,8 +63,12 @@ function PosShell() {
           <>
             {view === "venta" && (
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-                <ServiceCatalog />
-                <TicketPanel onRegisterPhone={registerFromSale} />
+                <ServiceCatalog onRegisterPhone={registerFromSale} lookupKey={lookupKey} />
+                <TicketPanel
+                  onRegisterPhone={registerFromSale}
+                  lookupKey={lookupKey}
+                  onSaleComplete={() => setLookupKey((k) => k + 1)}
+                />
               </div>
             )}
             {view === "ordenes" && <OrdersBoard />}

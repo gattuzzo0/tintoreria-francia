@@ -26,6 +26,7 @@ export type Report = {
   services: { serviceId: string; name: string; category: string; qty: number; revenueCents: number }[];
   categories: { category: string; qty: number; revenueCents: number }[];
   payments: { method: PaymentMethod; orders: number; salesCents: number }[];
+  branches: { branch: string; orders: number; salesCents: number }[];
   customers: {
     newCount: number;
     returningCount: number;

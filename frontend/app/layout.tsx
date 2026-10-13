@@ -22,13 +22,15 @@ export const metadata: Metadata = {
     ],
     apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
   },
-  appleWebApp: { title: "Francia POS" },
+  appleWebApp: { capable: true, title: "Francia POS", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
   themeColor: "#f5f7fa",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
 };
 

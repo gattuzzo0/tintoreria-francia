@@ -125,7 +125,7 @@ export function ReportsView() {
                   setRange((r) => ({ ...r, start: e.target.value }));
                   setError(null);
                 }}
-                className="h-10 rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                className="h-10 rounded-xl border border-input bg-background px-3 font-mono text-base outline-none sm:text-sm focus-visible:ring-3 focus-visible:ring-ring/30"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -139,7 +139,7 @@ export function ReportsView() {
                   setRange((r) => ({ ...r, end: e.target.value }));
                   setError(null);
                 }}
-                className="h-10 rounded-xl border border-input bg-background px-3 font-mono text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                className="h-10 rounded-xl border border-input bg-background px-3 font-mono text-base outline-none sm:text-sm focus-visible:ring-3 focus-visible:ring-ring/30"
               />
             </label>
           </div>
@@ -164,6 +164,7 @@ export function ReportsView() {
 function ReportBody({ report: r }: { report: Report }) {
   const { summary: s, previous: p } = r;
   const totalPayments = r.payments.reduce((n, x) => n + x.salesCents, 0);
+  const totalBranches = r.branches.reduce((n, x) => n + x.salesCents, 0);
   const totalCustomers = r.customers.newCount + r.customers.returningCount;
 
   return (
@@ -261,6 +262,18 @@ function ReportBody({ report: r }: { report: Report }) {
                 value: x.salesCents,
                 display: formatMoney(x.salesCents),
                 hint: totalPayments ? `${Math.round((x.salesCents / totalPayments) * 100)}% · ${x.orders} órd.` : undefined,
+              }))}
+            />
+          </section>
+          <section className={CARD} aria-labelledby="rep-branches">
+            <SectionTitle id="rep-branches" eyebrow="Ubicación" title="Ventas por sucursal" />
+            <BarList
+              rows={r.branches.map((x) => ({
+                key: x.branch,
+                label: x.branch,
+                value: x.salesCents,
+                display: formatMoney(x.salesCents),
+                hint: totalBranches ? `${Math.round((x.salesCents / totalBranches) * 100)}% · ${x.orders} órd.` : undefined,
               }))}
             />
           </section>

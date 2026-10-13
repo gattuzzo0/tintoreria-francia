@@ -112,7 +112,7 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
               onChange={(e) => setText(sanitizeText(e.target.value, NOTES_MAX))}
               placeholder="Se rompió un botón, mancha que no salió…"
               className={cn(
-                "resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground",
+                "resize-none rounded-xl border border-input bg-background px-3 py-2 text-base placeholder:text-muted-foreground sm:text-sm",
                 "outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
               )}
             />

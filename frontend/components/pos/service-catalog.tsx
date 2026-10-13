@@ -5,9 +5,16 @@ import Image from "next/image";
 import { Plus, RotateCcw } from "lucide-react";
 import { CATEGORIES, formatMoney, type Category } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
+import { CustomerLookup } from "./customer-lookup";
 import { usePos } from "./pos-provider";
 
-export function ServiceCatalog() {
+export function ServiceCatalog({
+  onRegisterPhone,
+  lookupKey = 0,
+}: {
+  onRegisterPhone: (phone: string) => void;
+  lookupKey?: number;
+}) {
   const { draft, addItem, setQty, services: all } = usePos();
   const [tab, setTab] = useState<Category>("Prendas");
   const locked = !draft.customerId;
@@ -15,11 +22,20 @@ export function ServiceCatalog() {
 
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-5" aria-labelledby="catalog-title">
-      <div>
-        <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">Nueva recepción</p>
-        <h1 id="catalog-title" className="text-2xl font-semibold tracking-tight">
-          Servicios
-        </h1>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h1 id="catalog-title" className="text-2xl font-semibold tracking-tight">
+            Servicios
+          </h1>
+          <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">Nueva recepción</p>
+        </div>
+        <CustomerLookup
+          key={lookupKey}
+          onRegisterPhone={onRegisterPhone}
+          autoFocus
+          compact
+          className="w-full lg:hidden"
+        />
       </div>
 
       <div role="tablist" aria-label="Categorías" className="flex gap-1.5 sm:gap-2">

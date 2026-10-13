@@ -14,7 +14,7 @@ import { usePos } from "./pos-provider";
 
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 const INPUT =
-  "h-10 w-full rounded-xl border border-input bg-background px-3 text-sm placeholder:text-muted-foreground aria-invalid:border-destructive " +
+  "h-10 w-full rounded-xl border border-input bg-background px-3 text-base sm:text-sm placeholder:text-muted-foreground aria-invalid:border-destructive " +
   FOCUS;
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
 

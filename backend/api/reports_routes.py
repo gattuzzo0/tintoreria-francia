@@ -71,6 +71,12 @@ class PaymentStat(BaseModel):
     salesCents: int
 
 
+class BranchStat(BaseModel):
+    branch: str
+    orders: int
+    salesCents: int
+
+
 class TopCustomer(BaseModel):
     customerId: str
     name: str
@@ -108,6 +114,7 @@ class ReportOut(BaseModel):
     services: list[ServiceStat]
     categories: list[CategoryStat]
     payments: list[PaymentStat]
+    branches: list[BranchStat]
     customers: CustomersStat
     peak: list[PeakCell]
     cycle: Cycle

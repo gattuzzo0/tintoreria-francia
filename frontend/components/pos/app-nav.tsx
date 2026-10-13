@@ -1,11 +1,17 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { BarChart3, ClipboardList, LayoutGrid, LogOut, ShieldCheck, Tags, Users } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
+import { readBranch } from "@/lib/branches";
 import { staffPhoneFromLoginEmail } from "@/lib/staff-login";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "./brand-mark";
 import { usePos } from "./pos-provider";
+
+const subscribeNoop = () => () => {};
+const getBranchClient = () => readBranch() ?? "";
+const getBranchServer = () => "";
 
 export type View = "venta" | "ordenes" | "clientes" | "reportes" | "catalogo" | "admins";
 
@@ -21,6 +27,7 @@ const ITEMS = [
 export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
   const { orders } = usePos();
   const { isAdmin, email, fullName, signOut } = useAuth();
+  const branch = useSyncExternalStore(subscribeNoop, getBranchClient, getBranchServer);
   const readyCount = orders.filter((o) => o.status === "listo").length;
 
   return (
@@ -69,7 +76,7 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
               <span className="relative inline-flex size-2 rounded-full bg-primary" />
             </span>
             <span className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-              Caja 01 · Abierta
+              {branch ? `${branch} · Abierta` : "Caja · Abierta"}
             </span>
           </div>
           <button

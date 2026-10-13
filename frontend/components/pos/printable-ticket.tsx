@@ -1,4 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
+import { getBranchInfo } from "@/lib/branches";
 import { formatDeliveryLong } from "@/lib/delivery";
 import { formatMoney, PAYMENT_LABEL, type Customer, type Order } from "@/lib/pos-data";
 
@@ -7,11 +8,7 @@ const STORE_INFO = {
   tagline: "Lavado en seco · Planchado · Cuidado textil",
   legalName: "Servicios Textiles del Valle S.A. de C.V.",
   rfc: "STV190312KQ4",
-  address: "Av. Insurgentes Sur 1458, Col. Actipan",
-  city: "Benito Juárez, CDMX · C.P. 03230",
-  phone: "55 5524 7781",
   hours: "Lun–Sáb 8:00–20:00 · Dom 9:00–14:00",
-  cashier: "Caja 01 · Ana G.",
 };
 
 const Sep = () => <hr className="my-3 border-0 border-t border-dashed border-foreground/30" />;
@@ -29,6 +26,7 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
   const items = order.lines.reduce((n, l) => n + l.qty, 0);
   const created = new Date(order.createdAt);
   const deliveryText = formatDeliveryLong(order.deliveryDate);
+  const branchInfo = getBranchInfo(order.branch);
 
   return (
     <article id="print-ticket" className="w-full max-w-[80mm] bg-card px-5 py-6 font-mono text-[11px] leading-relaxed">
@@ -39,9 +37,13 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
         <p>{STORE_INFO.tagline}</p>
         <p>{STORE_INFO.legalName}</p>
         <p>RFC {STORE_INFO.rfc}</p>
-        <p>{STORE_INFO.address}</p>
-        <p>{STORE_INFO.city}</p>
-        <p>Tel. {STORE_INFO.phone}</p>
+        {branchInfo ? (
+          <>
+            <p>{branchInfo.address}</p>
+            <p>{branchInfo.city}</p>
+            <p>Tel. {branchInfo.phone}</p>
+          </>
+        ) : null}
       </header>
 
       <Sep />
@@ -56,8 +58,7 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
           minute: "2-digit",
         })}
       />
-      <Row label="Atendió" value={STORE_INFO.cashier} />
-
+      <Row label="Sucursal" value={order.branch ?? "—"} />
       <Sep />
       <p className="uppercase tracking-[0.14em]">Cliente</p>
       <p className="font-semibold">{customer?.name ?? "—"}</p>
@@ -115,6 +116,7 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
           className="size-32"
         />
         <p className="font-semibold tracking-[0.2em]">ORD-{order.folio}</p>
+        {order.branch && <p className="font-semibold">{order.branch}</p>}
         <p>Presente este código para recoger su pedido</p>
       </div>
 

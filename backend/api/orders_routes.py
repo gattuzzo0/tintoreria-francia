@@ -20,8 +20,10 @@ OrderStatus = Literal["recibido", "proceso", "listo", "entregado"]
 NEXT_STATUS: dict[str, str] = {"recibido": "proceso", "proceso": "listo", "listo": "entregado"}
 MAX_LINES = 50
 ORDERS_LIMIT = 500
+Branch = Literal["Nereo Rdz.", "Himno Nal.", "Centro"]
+
 _SELECT = (
-    "folio, customer_id, express, delivery_date, payment_method, status, notes, created_at, "
+    "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, "
     "base_cents, surcharge_cents, subtotal_cents, tax_cents, total_cents, "
     "order_lines(service_id, name, unit, unit_price_cents, qty), "
     "order_notes(id, body, created_at)"
@@ -43,6 +45,7 @@ class OrderCreate(BaseModel):
     # El rango (mañana … +15 días, hora CDMX) lo valida la RPC create_order.
     delivery_date: date = Field(alias="deliveryDate")
     payment: PaymentMethod
+    branch: Branch
     notes: str = Field(default="", max_length=2000)
     lines: list[OrderLineIn] = Field(min_length=1, max_length=MAX_LINES)
 
@@ -96,6 +99,7 @@ class OrderOut(BaseModel):
     express: bool
     deliveryDate: str
     payment: PaymentMethod
+    branch: Branch | None
     status: OrderStatus
     notes: str
     staffNotes: list[OrderNoteOut]
@@ -129,6 +133,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
         express=bool(row["express"]),
         deliveryDate=str(row["delivery_date"]),
         payment=row["payment_method"],
+        branch=row.get("branch"),
         status=row["status"],
         notes=row.get("notes") or "",
         staffNotes=[
@@ -207,6 +212,7 @@ async def create_order(
         "p_notes": body.notes,
         "p_lines": [{"serviceId": line.service_id, "qty": line.qty} for line in body.lines],
         "p_delivery_date": body.delivery_date.isoformat(),
+        "p_branch": body.branch,
         "p_idempotency_key": idempotency_key,
     }
     try:

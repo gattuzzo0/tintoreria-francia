@@ -57,7 +57,7 @@ export function OrdersBoard() {
             maxLength={FOLIO_MAX_DIGITS}
             value={query}
             onChange={(e) => setQuery(e.target.value.replace(/\D/g, "").slice(0, FOLIO_MAX_DIGITS))}
-            className="h-10 w-full rounded-xl border border-input bg-background pr-3 pl-9 font-mono text-sm tracking-wider placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+            className="h-10 w-full rounded-xl border border-input bg-background pr-3 pl-9 font-mono text-base tracking-wider sm:text-sm placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
           />
         </div>
         <dl className="flex gap-8 font-mono">
@@ -103,6 +103,11 @@ export function OrdersBoard() {
                       >
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-sm font-medium">#{o.folio}</span>
+                          {o.branch && (
+                            <span className="truncate font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                              {o.branch}
+                            </span>
+                          )}
                           {o.express && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">
                               <Zap className="size-3" aria-hidden /> Exprés

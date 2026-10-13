@@ -11,3 +11,5 @@ next-env.d.ts
 __pycache__
 .venv
 .playwright-mcp
+
+.vercel

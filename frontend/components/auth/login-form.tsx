@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { BrandMark } from "@/components/pos/brand-mark";
+import { BRANCHES, type Branch, saveBranch } from "@/lib/branches";
 import { queueLoginIntro } from "@/lib/login-intro";
 import { Button } from "@/components/ui/button";
 import { isValidStaffPhone, staffPhoneToLoginEmail } from "@/lib/staff-login";
@@ -12,7 +13,7 @@ import { PHONE_DIGITS, sanitizePhoneInput } from "@/lib/validation";
 import { useAuth } from "./auth-provider";
 
 const INPUT =
-  "h-10 w-full rounded-xl border border-input bg-background px-3 text-sm placeholder:text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60";
+  "h-10 w-full rounded-xl border border-input bg-background px-3 text-base sm:text-sm placeholder:text-muted-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60";
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
 
 function safeNext(next: string | null): string {
@@ -25,6 +26,7 @@ export function LoginForm() {
   const params = useSearchParams();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [branch, setBranch] = useState<Branch | "">("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -39,6 +41,10 @@ export function LoginForm() {
       setError("Escribe tu contraseña.");
       return;
     }
+    if (!branch) {
+      setError("Elige una sucursal.");
+      return;
+    }
     setBusy(true);
     const result = await signIn(staffPhoneToLoginEmail(phone), password);
     setBusy(false);
@@ -50,6 +56,7 @@ export function LoginForm() {
       setError("Tu usuario no tiene acceso al punto de venta.");
       return;
     }
+    saveBranch(branch);
     queueLoginIntro();
     router.replace(safeNext(params.get("next")));
   };
@@ -111,6 +118,28 @@ export function LoginForm() {
             disabled={!isSupabaseConfigured || busy}
             className={INPUT}
           />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="branch" className={LABEL}>
+            Sucursal
+          </label>
+          <select
+            id="branch"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value as Branch | "")}
+            disabled={!isSupabaseConfigured || busy}
+            required
+            className={INPUT}
+          >
+            <option value="" disabled>
+              Elige sucursal…
+            </option>
+            {BRANCHES.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
         </div>
         <p role="alert" className="min-h-5 text-sm text-destructive">
           {error}

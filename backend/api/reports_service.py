@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 BUSINESS_TZ = timezone(timedelta(hours=-6))
 MAX_RANGE_DAYS = 366
 PAYMENT_METHODS = ("tarjeta", "efectivo", "transferencia", "pendiente")
+BRANCHES = ("Nereo Rdz.", "Himno Nal.", "Centro")
 AGING_BUCKETS = ((0, 7, "0–7 días"), (8, 15, "8–15 días"), (16, 30, "16–30 días"), (31, None, "Más de 30 días"))
 _PAGE = 1000
 _IN_CHUNK = 200
@@ -140,6 +141,23 @@ def _payments(orders: list[dict]) -> list[dict]:
     return out
 
 
+def _branches(orders: list[dict]) -> list[dict]:
+    out = []
+    for branch in BRANCHES:
+        mine = [o for o in orders if o.get("branch") == branch]
+        out.append({"branch": branch, "orders": len(mine), "salesCents": sum(int(o["total_cents"]) for o in mine)})
+    unknown = [o for o in orders if not o.get("branch")]
+    if unknown:
+        out.append(
+            {
+                "branch": "Sin sucursal",
+                "orders": len(unknown),
+                "salesCents": sum(int(o["total_cents"]) for o in unknown),
+            }
+        )
+    return out
+
+
 def _customers(orders: list[dict], names: dict[str, str], start: date) -> dict:
     totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for o in orders:
@@ -234,7 +252,7 @@ def build_report(start: date, end: date) -> dict:
     span = (end - start).days + 1
     prev_start = start - timedelta(days=span)
     select = (
-        "folio, customer_id, express, delivery_date, payment_method, status, total_cents, created_at, "
+        "folio, customer_id, express, delivery_date, payment_method, branch, status, total_cents, created_at, "
         "order_lines(service_id, name, qty, unit_price_cents)"
     )
     orders = _fetch_all(
@@ -269,6 +287,7 @@ def build_report(start: date, end: date) -> dict:
         "services": services,
         "categories": cats,
         "payments": _payments(current),
+        "branches": _branches(current),
         "customers": _customers(current, names, start),
         "peak": _peak(current),
         "cycle": _cycle(current),

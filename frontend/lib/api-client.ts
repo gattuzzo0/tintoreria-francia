@@ -8,7 +8,9 @@ export class ApiHttpError extends Error {
   }
 }
 
-const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/$/, "");
+// ponytail: sin esquema el navegador lo toma como ruta relativa y pega contra el frontend.
+let apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/$/, "");
+if (apiBase && !/^https?:\/\//i.test(apiBase)) apiBase = `https://${apiBase}`;
 
 export function apiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;

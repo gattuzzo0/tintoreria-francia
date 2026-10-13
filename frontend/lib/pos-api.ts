@@ -1,4 +1,5 @@
 import { apiFetch } from "./api-client";
+import type { Branch } from "./branches";
 import type { Category, Customer, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
 
 export type Me = {
@@ -15,6 +16,7 @@ export type CreateOrderBody = {
   express: boolean;
   deliveryDate: string;
   payment: PaymentMethod;
+  branch: Branch;
   notes: string;
   lines: { serviceId: string; qty: number }[];
 };

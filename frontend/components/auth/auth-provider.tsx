@@ -5,6 +5,7 @@ import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { ApiHttpError } from "@/lib/api-client";
 import { isAccessTokenExpired, shouldFetchMeAfterAuthEvent } from "@/lib/auth-session";
 import { fetchMe, type Me } from "@/lib/pos-api";
+import { clearBranch } from "@/lib/branches";
 import { clearPersistedAuthSession, isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type StaffRole = "admin" | "empleado";
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearAuthState = useCallback(() => {
     clearPersistedAuthSession();
+    clearBranch();
     setSession(null);
     setMe(null);
   }, []);

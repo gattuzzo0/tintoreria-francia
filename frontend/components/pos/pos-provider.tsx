@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useAuth } from "@/components/auth/auth-provider";
 import { ApiHttpError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
+import { readBranch } from "@/lib/branches";
 import { addOrderNote, advanceOrderStatus, createCustomer, createOrder, fetchCustomers, fetchOrders, fetchServices } from "@/lib/pos-api";
 import {
   computeTotals,
@@ -153,11 +154,14 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
 
   const checkout = useCallback(async (): Promise<Order | null> => {
     if (!draft.customerId || draftLines.length === 0 || draft.express === null || !draft.deliveryDate) return null;
+    const branch = readBranch();
+    if (!branch) throw new Error("Elige una sucursal al iniciar sesión.");
     const body = {
       customerId: draft.customerId,
       express: draft.express,
       deliveryDate: draft.deliveryDate,
       payment: draft.payment,
+      branch,
       notes: sanitizeText(draft.notes, NOTES_MAX).trim(),
       lines: draftLines.map((l) => ({ serviceId: l.serviceId, qty: l.qty })),
     };
