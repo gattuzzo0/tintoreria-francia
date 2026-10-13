@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { BrandMark } from "@/components/pos/brand-mark";
 import { BRANCHES, type Branch, saveBranch } from "@/lib/branches";
-import { queueLoginIntro } from "@/lib/login-intro";
+import { preloadLoginIntroAssets, queueLoginIntro } from "@/lib/login-intro";
 import { Button } from "@/components/ui/button";
 import { isValidStaffPhone, staffPhoneToLoginEmail } from "@/lib/staff-login";
 import { isSupabaseConfigured } from "@/lib/supabase";
@@ -29,6 +29,11 @@ export function LoginForm() {
   const [branch, setBranch] = useState<Branch | "">("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Mientras el usuario escribe credenciales, el logo y el audio de la intro quedan en caché.
+  useEffect(() => {
+    void preloadLoginIntroAssets();
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

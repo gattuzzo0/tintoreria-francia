@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
-import { clearLoginIntro, isLoginIntroQueued } from "@/lib/login-intro";
+import { Loader2 } from "lucide-react";
+import {
+  clearLoginIntro,
+  INTRO_AUDIO_SRC,
+  INTRO_LOGO_SRC,
+  isLoginIntroQueued,
+  preloadLoginIntroAssets,
+} from "@/lib/login-intro";
 import { cn } from "@/lib/utils";
 
 /** Animación + desvanecido = 3 s exactos. */
@@ -9,6 +16,8 @@ const INTRO_MS = 2700;
 const FADE_MS = 300;
 /** El siseo arranca con el chorro de vapor (.tf-intro-jet). */
 const STEAM_SOUND_AT_MS = 700;
+
+type Phase = "loading" | "playing" | "fading" | "done";
 
 /** PRNG con semilla fija: mismas partículas en cada render (render puro). */
 function seeded(seed: number) {
@@ -82,20 +91,32 @@ const EMBERS = Array.from({ length: 28 }, () => ({
 }));
 
 export function LoginIntro() {
-  const [phase, setPhase] = useState<"playing" | "fading" | "done">(() => (isLoginIntroQueued() ? "playing" : "done"));
+  const [phase, setPhase] = useState<Phase>(() => (isLoginIntroQueued() ? "loading" : "done"));
   const isPlaying = phase === "playing";
 
   useEffect(clearLoginIntro, []);
 
+  // Espera logo + audio (ya precargados en /login si el usuario tardó en escribir).
   useEffect(() => {
-    if (phase === "done") return;
+    if (phase !== "loading") return;
+    let cancelled = false;
+    void preloadLoginIntroAssets().finally(() => {
+      if (!cancelled) setPhase("playing");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== "playing" && phase !== "fading") return;
     const t = setTimeout(() => setPhase(isPlaying ? "fading" : "done"), isPlaying ? INTRO_MS : FADE_MS);
     return () => clearTimeout(t);
   }, [phase, isPlaying]);
 
   useEffect(() => {
     if (!isPlaying) return;
-    const audio = new Audio("/intro-steam.mp3");
+    const audio = new Audio(INTRO_AUDIO_SRC);
     audio.volume = 0.8;
     const t = setTimeout(() => {
       // El clic de "Entrar" cuenta como interacción, pero si el navegador bloquea el audio la intro sigue en silencio.
@@ -113,82 +134,98 @@ export function LoginIntro() {
     <div
       role="presentation"
       aria-label="Tintorería Francia"
-      onClick={() => setPhase("fading")}
-      className={cn("tf-intro fixed inset-0 z-[100] cursor-pointer overflow-hidden", phase === "fading" && "opacity-0")}
+      aria-busy={phase === "loading"}
+      onClick={() => {
+        if (phase === "playing") setPhase("fading");
+      }}
+      className={cn(
+        "tf-intro fixed inset-0 z-[100] overflow-hidden",
+        phase === "playing" && "cursor-pointer",
+        phase === "fading" && "opacity-0",
+      )}
     >
-      {DUST.map((d, i) => (
-        <span
-          key={i}
-          className="tf-intro-dust"
-          style={vars({ left: d.x, top: d.y, width: d.size, height: d.size, "--rise": d.rise, animationDelay: d.delay })}
-        />
-      ))}
-
-      <div className="tf-intro-stage">
-        <div className="tf-intro-logo">
-          {/* eslint-disable-next-line @next/next/no-img-element -- recurso estático, sin optimización */}
-          <img src="/logo-francia.png" alt="" draggable={false} />
-          <span className="tf-intro-glint" />
+      {phase === "loading" ? (
+        <div className="flex h-full flex-col items-center justify-center gap-3">
+          <Loader2 className="size-8 animate-spin text-white/85" aria-hidden />
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/70">Cargando</p>
         </div>
-
-        <div className="tf-intro-orbit">
-          <span className="tf-intro-trail" />
-          <span className="tf-intro-spark" />
-        </div>
-
-        {BUBBLES.map((b, i) => (
-          <span key={i} className="tf-intro-bubble-arm" style={vars({ "--angle": b.angle })}>
+      ) : (
+        <>
+          {DUST.map((d, i) => (
             <span
-              className="tf-intro-bubble"
-              style={vars({ width: b.size, height: b.size, "--drift": b.drift, animationDelay: b.delay })}
+              key={i}
+              className="tf-intro-dust"
+              style={vars({ left: d.x, top: d.y, width: d.size, height: d.size, "--rise": d.rise, animationDelay: d.delay })}
             />
-          </span>
-        ))}
+          ))}
 
-        <span className="tf-intro-star" style={{ left: "12.5%" }} />
-        <span className="tf-intro-star" style={{ left: "87.5%", animationDelay: "2.15s" }} />
-      </div>
+          <div className="tf-intro-stage">
+            <div className="tf-intro-logo">
+              {/* eslint-disable-next-line @next/next/no-img-element -- recurso estático, sin optimización */}
+              <img src={INTRO_LOGO_SRC} alt="" draggable={false} />
+              <span className="tf-intro-glint" />
+            </div>
 
-      <div className="tf-intro-steam">
-        {JET.map((j, i) => (
-          <span
-            key={i}
-            className="tf-intro-jet"
-            style={vars({ top: j.y, width: j.width, "--to": j.to, "--wave": j.wave, animationDelay: j.delay })}
-          />
-        ))}
-        {WISPS.map((w, i) => (
-          <span
-            key={i}
-            className="tf-intro-wisp"
-            style={vars({ left: w.x, top: w.y, width: w.width, "--tilt": w.tilt, animationDelay: w.delay })}
-          />
-        ))}
-        {BILLOW.map((b, i) => (
-          <span
-            key={i}
-            className="tf-intro-billow"
-            style={vars({ left: b.x, top: b.y, width: b.width, "--to": b.to, animationDelay: b.delay })}
-          />
-        ))}
-      </div>
-      <span className="tf-intro-veil" />
+            <div className="tf-intro-orbit">
+              <span className="tf-intro-trail" />
+              <span className="tf-intro-spark" />
+            </div>
 
-      {EMBERS.map((e, i) => (
-        <span
-          key={i}
-          className="tf-intro-ember"
-          style={vars({
-            left: e.x,
-            top: e.y,
-            width: e.size,
-            height: e.size,
-            "--dx": e.dx,
-            "--rise": e.rise,
-            animationDelay: e.delay,
-          })}
-        />
-      ))}
+            {BUBBLES.map((b, i) => (
+              <span key={i} className="tf-intro-bubble-arm" style={vars({ "--angle": b.angle })}>
+                <span
+                  className="tf-intro-bubble"
+                  style={vars({ width: b.size, height: b.size, "--drift": b.drift, animationDelay: b.delay })}
+                />
+              </span>
+            ))}
+
+            <span className="tf-intro-star" style={{ left: "12.5%" }} />
+            <span className="tf-intro-star" style={{ left: "87.5%", animationDelay: "2.15s" }} />
+          </div>
+
+          <div className="tf-intro-steam">
+            {JET.map((j, i) => (
+              <span
+                key={i}
+                className="tf-intro-jet"
+                style={vars({ top: j.y, width: j.width, "--to": j.to, "--wave": j.wave, animationDelay: j.delay })}
+              />
+            ))}
+            {WISPS.map((w, i) => (
+              <span
+                key={i}
+                className="tf-intro-wisp"
+                style={vars({ left: w.x, top: w.y, width: w.width, "--tilt": w.tilt, animationDelay: w.delay })}
+              />
+            ))}
+            {BILLOW.map((b, i) => (
+              <span
+                key={i}
+                className="tf-intro-billow"
+                style={vars({ left: b.x, top: b.y, width: b.width, "--to": b.to, animationDelay: b.delay })}
+              />
+            ))}
+          </div>
+          <span className="tf-intro-veil" />
+
+          {EMBERS.map((e, i) => (
+            <span
+              key={i}
+              className="tf-intro-ember"
+              style={vars({
+                left: e.x,
+                top: e.y,
+                width: e.size,
+                height: e.size,
+                "--dx": e.dx,
+                "--rise": e.rise,
+                animationDelay: e.delay,
+              })}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }
