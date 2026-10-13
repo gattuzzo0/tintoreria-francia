@@ -1,0 +1,113 @@
+---
+description: System architecture — monorepo layout, module boundaries, dependency rules, data flow
+alwaysApply: true
+---
+
+# Architecture
+
+Engineering constitution for full-stack products: **React + Vite** SPA, **Node** API, **Supabase** (Auth + Postgres). Proven layered design — no microservices, no GraphQL, no custom frameworks unless explicitly approved.
+
+## Monorepo layout (new projects)
+
+```
+<repo>/
+├── apps/
+│   ├── web/                 # Vite React SPA (deployable)
+│   └── api/                 # Node API (deployable)
+├── packages/
+│   └── shared/              # Zod schemas, types, constants — zero app imports
+├── supabase/
+│   └── migrations/          # sole source of DB truth
+├── scripts/                 # dev orchestration, smoke tests
+├── .github/workflows/       # CI
+├── package.json             # npm workspaces root
+├── .env.example
+└── README.md
+```
+
+**Legacy layout** (`frontend/` + `backend/` at repo root) is acceptable during migration. New work follows `apps/*` when restructuring; do not mix both layouts in the same repo long term.
+
+## System boundaries
+
+```text
+Browser
+  ├─ Supabase Auth SDK     → login, session, token refresh only
+  └─ HTTPS + Bearer JWT    → all business reads/writes
+
+API (service_role)         → Postgres, RPC, R2
+Postgres (app schema)      → system of record
+R2 (optional)              → binary assets; keys in DB, never public URLs without proxy
+```
+
+**Hard rules**
+
+- Frontend **never** uses service_role or reads business tables via anon key.
+- Frontend **never** sets prices on write — server resolves from catalog.
+- One catalog source of truth in Postgres (not static TS arrays in production).
+- Schema changes only via `supabase/migrations/` — never “just run SQL in dashboard” without committing migration file.
+
+## Layer model (API)
+
+```text
+routes/        HTTP adapter — parse, status codes, call service
+services/      use-cases — orchestration, no raw SQL in routes
+repositories/  Supabase SDK, PostgREST RPC, R2 — no business rules
+plugins/       auth, CORS, request-id, error shape, rate limit
+```
+
+Routes stay thin. Services are unit-tested. Repositories are swappable.
+
+## Layer model (web)
+
+```text
+app/           shell — routes, providers, query client
+features/      domain UI — auth, shop, pos (co-located hooks + api)
+components/    shared presentational — no domain logic
+lib/           api-client, theme, formatters — no feature rules
+```
+
+Features expose a **public** `index.ts`. Other code imports `@/features/<name>`, never deep paths into feature internals.
+
+## Dependency rules
+
+| From | May import | Must NOT import |
+|------|------------|-----------------|
+| `packages/shared` | zod | any `apps/*` |
+| `apps/api/routes` | services, shared, plugins | repositories |
+| `apps/api/services` | repositories, shared | HTTP request/response types |
+| `apps/api/repositories` | shared, DB clients | services, routes |
+| `apps/web/features/*` | components, lib, shared, feature public APIs | `apps/api`, service_role |
+| `apps/web/components` | lib, shared | feature internals |
+
+Enforce with ESLint `import/no-restricted-paths` or `eslint-plugin-boundaries` when project grows.
+
+## Deploy model
+
+- **Two Vercel projects**: `apps/web` and `apps/api` (separate roots).
+- **Three environments**: local, staging, production — separate Supabase projects for staging/prod.
+- Build-time env (`VITE_*`) on web; runtime env on API.
+- One `vercel.json` per app — no conflicting rewrites (no maintenance mode in app deploy config).
+
+## State ownership
+
+| Concern | Owner |
+|---------|--------|
+| Session / JWT | Supabase Auth (client) |
+| Role / permissions | API `GET /api/me` — not direct PostgREST from browser |
+| Server data | TanStack Query + API |
+| UI ephemeral | `useState` |
+| Multi-step local UI (cart lines) | `useReducer` in feature hook |
+
+No Redux/Zustand unless three or more global client stores appear.
+
+## What we deliberately skip
+
+Microservices, GraphQL, event sourcing, Kubernetes for SMB apps, SSR/Next unless SEO blockers proven, BFF per client, CQRS packages for &lt;5 domains.
+
+## Anti-patterns
+
+- ❌ Business data fetched with anon key from browser
+- ❌ Client-sent `unitPrice` trusted on write
+- ❌ Multiple SQL schema files contradicting runtime (`public` vs `anthea` vs ad-hoc)
+- ❌ Logic in route handlers that belongs in services
+- ❌ Feature A importing Feature B's components directly (use shared or public API)

@@ -1,0 +1,83 @@
+---
+description: Mandatory smoke tests — DB secrets, RLS, bundle leak, DNS/IP, Vercel env split
+alwaysApply: true
+---
+
+# Security smoke tests
+
+Run before marking auth, Supabase, deploy, or catalog/POS work **done**. Applies to every full-stack project in this monorepo pattern (Vite SPA + FastAPI/Node API + Supabase).
+
+Pareja con `security.mdc`, `supabase-integration.mdc`, `auth-session-method.mdc`.
+
+## Pass criteria (all required)
+
+| # | Check | Pass |
+|---|-------|------|
+| 1 | Prod + local `dist/assets/*.js` contain **no** `service_role`, `SUPABASE_SERVICE`, `JWT_SECRET`, `postgres://` | 0 matches |
+| 2 | Frontend `src/` has **no** `supabase.from(`, `rest/v1/`, or direct business-table reads | grep clean |
+| 3 | Anon key + `Accept-Profile: <app_schema>` → sensitive tables return `[]` or 401/403 | `profiles`, `pos_sales`, `pos_sale_lines`, etc. |
+| 4 | Anon key → **every** exposed business table blocked unless an explicit public-read policy is documented | no surprise rows |
+| 5 | `GET /api/health` (prod API) → 200, no secrets in JSON | `ok: true` |
+| 6 | Custom domain DNS → CDN/Vercel IPs, **not** residential/hosting origin IP | `nslookup` |
+| 7 | `curl -I` prod frontend/API → no origin/home IP in headers | `Server: Vercel` OK |
+| 8 | `.env` with real secrets → gitignored, **not** `git ls-files` tracked | ignored |
+| 9 | Vercel **frontend** project: only `VITE_*` (+ public Supabase anon). **Backend** project: `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `R2_*` | split correct |
+| 10 | Supabase **Security Advisor** → no `RLS Disabled` / stray public policies | dashboard clean |
+
+## Commands (adapt paths/URLs)
+
+**Bundle scan (after `npm run build` in web app):**
+
+```powershell
+Select-String -Path dist/assets/*.js -Pattern "service_role|SUPABASE_SERVICE|JWT_SECRET|postgres://" -SimpleMatch
+```
+
+Also scan **live** prod JS (`curl` homepage → main `assets/*.js`).
+
+**RLS probe (replace URL, anon key, schema):**
+
+```powershell
+curl -s "https://<project>.supabase.co/rest/v1/<table>?select=id&limit=1" `
+  -H "apikey: <ANON_KEY>" `
+  -H "Authorization: Bearer <ANON_KEY>" `
+  -H "Accept-Profile: <app_schema>"
+```
+
+Repeat per sensitive table. Expect `[]` — not real rows.
+
+**Code grep:**
+
+```powershell
+rg "supabase\.from\(|rest/v1" frontend/src
+```
+
+**Env not committed:**
+
+```powershell
+git check-ignore -v backend/.env frontend/.env
+git ls-files backend/.env frontend/.env   # must be empty
+```
+
+## Key rules agents must enforce
+
+- **`SUPABASE_SERVICE_ROLE_KEY` ≠ anon key.** Anon = `role: anon`, public in bundle. Service role = `role: service_role`, API only, bypasses RLS.
+- **Do not unexpose app schema** if API uses PostgREST (`.schema("…")`, RPC `Content-Profile`). That breaks the backend. Fix leaks with **RLS on + no anon/authenticated policies**.
+- Browser Supabase client: **auth only**. Business data via `Authorization: Bearer` → `/api/...`.
+- New table in exposed schema → same migration adds `ENABLE` + `FORCE ROW LEVEL SECURITY` and **no** default public policy.
+
+## On failure
+
+| Symptom | Fix |
+|---------|-----|
+| Anon reads rows | List `pg_policies`, drop public read policies; re-apply RLS from migration |
+| `service_role` in bundle | Remove from `VITE_*`, rotate key in Supabase, redeploy frontend |
+| `supabase.from()` in web | Route through API module in `lib/*Api.ts` |
+| DNS shows home IP | Point domain to Vercel/CDN, not router |
+| Secrets in git history | Rotate all exposed keys; keep `.env` gitignored |
+
+## Agent checklist (before "done")
+
+- [ ] Ran bundle scan (local build + prod URL if deploy touched)
+- [ ] Ran anon `rest/v1` probe on all business tables
+- [ ] Confirmed Vercel env split (web vs API) if env vars changed
+- [ ] Reminded human to check Security Advisor if migrations/RLS changed

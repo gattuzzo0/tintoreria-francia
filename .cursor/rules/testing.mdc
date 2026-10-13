@@ -1,0 +1,105 @@
+---
+description: Testing strategy — Vitest, pytest, Playwright, CI gates, coverage targets
+globs: "**/*.{test,spec}.{ts,tsx,py},**/tests/**,**/e2e/**,.github/workflows/**"
+alwaysApply: false
+---
+
+# Testing
+
+Tests are **required** for money-moving paths, auth guards, and shared schemas. No PR merges with failing CI.
+
+## Pyramid
+
+```text
+        ┌─────────────┐
+        │  Playwright │  few — critical user journeys (staging)
+        ├─────────────┤
+        │ API routes  │  some — integration with mocked repos
+        ├─────────────┤
+        │  Services   │  many — business logic
+        ├─────────────┤
+        │ Schemas/Zod │  many — cheap, high value
+        └─────────────┘
+```
+
+## Tooling
+
+| Layer | Tool | Location |
+|-------|------|----------|
+| Shared schemas | Vitest | `packages/shared/**/*.test.ts` |
+| API services | Vitest or pytest | `apps/api/src/**/*.test.ts` / `backend/tests/` |
+| Web hooks/reducers | Vitest | colocated `*.test.ts` |
+| E2E | Playwright | `e2e/` at repo root |
+| Lint/types | ESLint, `tsc -b` | CI on every PR |
+
+## Required test cases (API)
+
+- `require_access_token`: missing Bearer → 401; invalid token → 401.
+- `require_staff` / `require_pos_staff`: valid token, wrong role → 403.
+- DB not configured → 503 on protected routes.
+- `POST /api/pos/sales`: empty lines → 422; `pago_despues` without contact → 422.
+- RPC failure maps to 503 with actionable `detail`, not raw traceback.
+- Idempotency: same key + same body → same sale id; same key + different body → 409.
+
+## Required test cases (web)
+
+- `posReducer`: add, remove, set qty, clear, venta libre line.
+- `completeSale` body builder: omits `unitPrice`; includes deferred contact when needed.
+- `api-client`: parses FastAPI `detail` string and array; maps 502/503 to hint text.
+
+## E2E (staging)
+
+Minimum smoke: staff login → POS loads → (optional) create sale against staging API.
+
+Run nightly or on `main` — not required on every PR if flaky; unit tests gate PRs.
+
+## CI pipeline (every PR)
+
+```yaml
+# order
+1. eslint (web)
+2. tsc -b (web)
+3. vitest (shared + web + api)
+4. pytest (api legacy) or vitest (api node)
+5. build web + build api
+# main only:
+6. playwright against staging
+```
+
+## Mocking
+
+- Unit tests: mock repositories — no live Supabase in unit CI.
+- Optional smoke: `test_db_connection.py` / script run manually or weekly — not blocking PR unless configured.
+- E2E: dedicated staging staff user; never production credentials in CI.
+
+## Coverage targets (pragmatic)
+
+| Area | Target |
+|------|--------|
+| `packages/shared` schemas | ≥ 90% |
+| API `services/` | ≥ 80% |
+| Auth deps | 100% of status branches |
+| React pages | behavior tests for reducers/hooks only — no pixel tests |
+
+## Anti-patterns
+
+- ❌ `git commit --no-verify` to skip hooks (except documented emergency)
+- ❌ Tests that hit production Supabase or API
+- ❌ No tests on auth deps (“we'll add later” on POS)
+- ❌ E2E as only test layer — too slow and flaky alone
+- ❌ Testing implementation details (internal state) over contracts
+
+## Commands (add to root `package.json`)
+
+```json
+{
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "test:web": "npm run test --workspace apps/web",
+    "test:api": "npm run test --workspace apps/api",
+    "e2e": "playwright test"
+  }
+}
+```
+
+Legacy: `cd backend && pytest`, `cd frontend && vitest`.

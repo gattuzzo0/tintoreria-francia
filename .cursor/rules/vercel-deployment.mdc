@@ -1,0 +1,28 @@
+---
+description: Despliegue Vercel — dos proyectos (frontend SPA + backend Python), rewrites y CORS
+alwaysApply: true
+---
+
+# Vercel
+
+## Dos proyectos
+
+- **Frontend** (React/CRA): proyecto Vercel con root en `frontend/`. `vercel.json` típico: rewrites SPA — rutas a `index.html` para client-side routing.
+- **Backend** (FastAPI): proyecto Vercel separado con root en `backend/`, entry `server.py` y runtime `@vercel/python`.
+
+## Backend `vercel.json`
+
+- `builds`: `{ "src": "server.py", "use": "@vercel/python" }`
+- `routes`: todo el tráfico a `server.py`; ruta explícita para **OPTIONS** en `/api/*` con headers CORS y `status: 204` para preflight.
+- Headers CORS en rutas que sirven la app: `Access-Control-Allow-Origin`, métodos, headers permitidos.
+
+## Frontend → Backend
+
+- En build del frontend, definir `REACT_APP_BACKEND_URL` con la URL pública del proyecto backend (p. ej. `https://<proyecto-api>.vercel.app`).
+- Si la app se publica bajo subruta, `REACT_APP_BASE_PATH` y script de build que mueva assets si aplica.
+- Cliente HTTP: base API = `{BACKEND_URL}/api` (o mismo origen + proxy solo en dev).
+
+## Entorno
+
+- Repetir en el dashboard de Vercel las mismas variables que en `.env` local: Supabase, R2, JWT/secrets, etc.
+- Tras enlazar el repo, Vercel puede crear `.vercel/project.json` (local); no commitear secretos, solo IDs de proyecto si el equipo lo acuerda.

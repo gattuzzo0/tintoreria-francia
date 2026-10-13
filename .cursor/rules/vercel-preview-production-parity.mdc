@@ -1,0 +1,49 @@
+---
+description: Vercel — preview y producción alineados (CORS, env, ramas, monorepo)
+alwaysApply: true
+---
+
+# Vercel: preview y producción sin sorpresas
+
+Aplica a apps full-stack desplegadas en **Vercel** (frontend SPA + API aparte), especialmente monorepos `frontend/` + `backend/`.
+
+## Dos proyectos, dos URLs
+
+- **Frontend** y **backend** deben ser **proyectos Vercel distintos** (cada uno con su *Root Directory* si el repo es monorepo: `frontend/` o `backend/`).
+- El dominio corto `https://<nombre-proyecto-api>.vercel.app` del API corresponde al deploy de **Production** (rama Production del proyecto API), no al último preview de una rama feature.
+- Los **previews** del API tienen URL larga (`…-git-<rama>-….vercel.app`). El frontend en preview que apunte a `VITE_*_BACKEND_URL=https://<api>.vercel.app` **siempre** habla con el API de **Production**, salvo que cambies esa variable en entorno Preview a la URL del preview del API.
+
+## Git vs CLI y raíz del repo
+
+- `npx vercel --prod` desde `frontend/` usa `frontend/` como raíz del proyecto; el integración Git usa la **Root Directory** configurada en el dashboard.
+- Si la Root Directory del frontend es la **raíz del monorepo**, hace falta `vercel.json` **en la raíz del repo** con `installCommand` / `buildCommand` bajo `frontend/` y `outputDirectory` → `frontend/dist` (y rewrites SPA). Sin eso el deploy automático puede construir el `package.json` equivocado o servir salida vacía.
+- Tras cambiar variables de entorno en Vercel, hace falta **nuevo build** (redeploy o commit); Vite/React no inyectan `import.meta.env` / `process.env` en runtime.
+
+## Variables de entorno (frontend)
+
+- Prefijo **Vite:** `VITE_*` (o el que use el bundler). Deben existir en Vercel para **Preview** y **Production** (y Development si aplica), no solo en uno; si no, el bundle de preview carece de Supabase/API y la UI “desaparece” comportamientos.
+- Tras añadir o editar `VITE_*`, **redeploy** del frontend.
+
+## CORS en el API (FastAPI / Starlette)
+
+- Peticiones con **`Authorization`** disparan preflight; el navegador exige **`Access-Control-Allow-Origin`** con el **origen concreto** (no basta un `*` en muchos casos con credenciales/cabeceras).
+- Incluir desde el inicio:
+  - Orígenes fijos: `localhost` (Vite), URL de producción del frontend.
+  - **`allow_origin_regex`** (o equivalente) para orígenes `https://…\.vercel\.app` de **previews**, porque el subdominio cambia en cada deploy.
+- Opcional: lista extra `CORS_EXTRA_ORIGINS` para dominios propios.
+- Evitar listas estrictas **solo por env** que incluyan producción y excluyan previews salvo que sea intencional; revisar que en el dashboard del API no queden variables viejas (`CORS_ALLOW_ORIGINS`, etc.) que fuercen modo lista y rompan previews.
+- Duplicar CORS solo en `vercel.json` **y** en la app suele ser redundante o generar cabeceras duplicadas; priorizar **middleware CORS en el código** del API salvo que OPTIONS no llegue al runtime (caso excepcional).
+
+## Protección de despliegues (Vercel)
+
+- Con **Deployment Protection** en previews, recursos como `site.webmanifest` pueden responder **401** en el navegador; es esperado hasta desactivar protección en previews o usar sesión Vercel.
+
+## Comprobaciones rápidas
+
+- **API:** `GET /` o `/health` — si añades un campo de versión/`corsProfile` en el JSON, puedes verificar qué commit está sirviendo Production.
+- **CORS:** desde terminal, `curl -X OPTIONS` al endpoint con `-H "Origin: <url-preview-frontend>"` y cabeceras de preflight; debe ser **2xx** y reflejar el `Origin` permitido.
+
+## Coherencia con el resto del repo
+
+- Monorepo y proxy local: ver `monorepo-structure.mdc`.
+- Variables Supabase/R2/backend: ver `supabase-integration.mdc`, `cloudflare-r2-storage.mdc`, `vercel-deployment.mdc`.

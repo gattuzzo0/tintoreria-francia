@@ -1,0 +1,118 @@
+---
+description: Database conventions — Supabase, migrations, RLS, RPC, money, schema naming
+globs: supabase/**/*,backend/**/*.sql,**/*.sql
+alwaysApply: false
+---
+
+# Database Conventions
+
+**Supabase Postgres** is the system of record. Schema evolves only through committed migrations.
+
+## Schema organization
+
+- App tables live in a **dedicated schema** (e.g. `anthea`) when exposing via PostgREST alongside `public`.
+- Expose schema in Supabase Dashboard → Settings → API → Exposed schemas.
+- One migration directory: `supabase/migrations/`.
+- Archive legacy SQL to `supabase/migrations/_archive/` — never apply two conflicting baselines.
+
+**Naming:** see `naming.mdc` for tables/columns/RPC.
+
+## Standard tables (commerce + staff)
+
+| Table | Purpose |
+|-------|---------|
+| `profiles` | `id` (auth user), `role`, `updated_at` |
+| `catalog_products` | `id`, `category`, `name`, `price_pesos`, `image_key`, `pos_only`, `sort_order` |
+| `pos_sales` | header: `staff_user_id`, `payment_method`, deferred fields, `total_pesos` |
+| `pos_sale_lines` | `sale_id`, `line_index`, `product_id`, `product_name`, `quantity`, `unit_price_pesos` |
+| `idempotency_keys` (optional) | `key`, `request_hash`, `sale_id`, `created_at` |
+
+## Money
+
+- `INTEGER` columns: `price_pesos`, `unit_price_pesos`, `total_pesos`.
+- Document whether unit is whole pesos or centavos — be consistent repo-wide.
+- Never `NUMERIC`/`FLOAT` for money in new columns.
+
+## Migrations
+
+```text
+supabase/migrations/
+├── 000001_anthea_baseline.sql
+├── 000002_catalog_products.sql
+└── 000003_create_pos_sale_rpc.sql
+```
+
+Rules:
+
+- **Forward-only** in production — write new migration to undo, don't edit applied files.
+- Idempotent guards where safe: `CREATE TABLE IF NOT EXISTS`, `DROP POLICY IF EXISTS`.
+- Include RLS `ENABLE` + `FORCE` in same migration as `CREATE TABLE`.
+- Test on staging before production.
+- PR that changes runtime queries **must** include migration or explicit "no schema change" note.
+
+## Row Level Security
+
+Template for every new table in exposed schema:
+
+```sql
+ALTER TABLE <schema>.<table> ENABLE ROW LEVEL SECURITY;
+ALTER TABLE <schema>.<table> FORCE ROW LEVEL SECURITY;
+```
+
+**API-only pattern (default):** no policies for `anon` / `authenticated`. Backend uses `service_role`.
+
+**Browser-read pattern (discouraged):** if required, minimal policy e.g. `profiles_select_own` for `authenticated` reading own row only.
+
+## RPC functions
+
+- Use `SECURITY DEFINER` for transactional writes spanning tables.
+- `SET search_path = <schema>, public` inside function.
+- `GRANT EXECUTE` only to `service_role` unless anon execute explicitly required (rare).
+- Validate enums, line counts, totals inside RPC — don't trust client prices.
+- Resolve `unit_price_pesos` from `catalog_products` by `product_id`; venta libre uses defined fallback rules.
+
+```sql
+-- signature pattern
+create or replace function anthea.create_pos_sale(
+  p_staff_user_id uuid,
+  p_payment_method text,
+  p_deferred_full_name text,
+  p_deferred_phone text,
+  p_lines jsonb
+) returns uuid ...
+```
+
+## Foreign keys
+
+- Prefer FK to `auth.users` for `profiles.id` in same Supabase project.
+- Cross-project migrations: plain `UUID` without FK — document in migration comment.
+
+## Indexes
+
+Add for:
+
+- FK columns (`sale_id` on lines)
+- Filter/sort columns (`created_at DESC`, `category`, `staff_user_id`)
+
+## SDK access from API
+
+```python
+client.schema("anthea").table("pos_sales").select("...")
+```
+
+Always pass `Content-Profile: anthea` header on PostgREST RPC HTTP calls.
+
+## Seeds
+
+- Seed scripts (`scripts/seed_catalog.py`) are **repeatable** for dev/staging — not manual CSV in prod without migration record.
+- Production catalog changes via admin API or migration seed with review.
+
+## Anti-patterns
+
+- ❌ `product_ts` or ambiguous column names
+- ❌ Tables in `public` and duplicate in `anthea` without migration plan
+- ❌ RLS disabled on exposed tables
+- ❌ Policies that allow `anon` read on sales/catalog
+- ❌ Multi-step writes from API without RPC transaction
+- ❌ Storing only image URL without `image_key` for R2 delete/list
+- ❌ Applying SQL only in dashboard without repo migration

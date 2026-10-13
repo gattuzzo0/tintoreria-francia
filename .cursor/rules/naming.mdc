@@ -1,0 +1,95 @@
+---
+description: Naming conventions — files, symbols, database, API, env vars, git
+alwaysApply: true
+---
+
+# Naming
+
+Consistent names reduce cognitive load across repos and AI-assisted edits.
+
+## Files and folders
+
+| Kind | Convention | Example |
+|------|------------|---------|
+| React component | `PascalCase.tsx` | `PosTicket.tsx` |
+| Page | `PascalCase.tsx` or `*Page.tsx` | `CatalogPage.tsx` |
+| Hook | `use*.ts` | `usePosCart.ts` |
+| Feature folder | lowercase single word | `features/pos/` |
+| API route module | `*.routes.ts` / `*_routes.py` | `pos.routes.ts`, `pos_routes.py` |
+| Service | `*.service.ts` / `*_service.py` | `pos.service.ts` |
+| Repository | `*.repo.ts` / `*_repo.py` | `sales.repo.ts` |
+| Query module | `*.queries.ts` | `sales.queries.ts` |
+| Test | colocated `*.test.ts` / `test_*.py` | `pos.service.test.ts` |
+| SQL migration | `NNNNNN_snake_description.sql` | `000003_create_pos_sale_rpc.sql` |
+| Zod schema file | `*.schema.ts` | `sale.schema.ts` |
+
+## TypeScript / JavaScript symbols
+
+| Kind | Convention | Example |
+|------|------------|---------|
+| Variables, functions | `camelCase` | `createSale`, `lineCount` |
+| Types, interfaces, enums | `PascalCase` | `SaleRecord`, `PaymentMethod` |
+| Constants (true const) | `SCREAMING_SNAKE` or `camelCase` for grouped const objects | `VENTA_LIBRE_PRODUCT_ID` |
+| React component | `PascalCase` | `function PosHeader()` |
+| Context | `*Provider`, `use*` hook | `AuthProvider`, `useAuth` |
+| Boolean vars | prefix `is`, `has`, `can` | `isSupabaseConfigured`, `canAccessPos` |
+
+## Python symbols
+
+| Kind | Convention | Example |
+|------|------------|---------|
+| Modules | `snake_case` | `pos_routes.py` |
+| Functions, variables | `snake_case` | `require_pos_staff` |
+| Classes | `PascalCase` | `PosSaleCreate` |
+| Private helpers | `_leading_underscore` | `_fetch_sale_by_id` |
+| Pydantic fields (internal) | `snake_case` with camelCase **alias** for JSON | `product_id` / `productId` |
+
+## Database (Postgres)
+
+| Kind | Convention | Example |
+|------|------------|---------|
+| Schema | lowercase product name | `anthea` |
+| Tables | `snake_case`, plural nouns | `pos_sales`, `catalog_products` |
+| Columns | `snake_case` | `unit_price_pesos`, `staff_user_id` |
+| RPC functions | `snake_case` verb phrase | `create_pos_sale` |
+| RPC params | `p_snake_case` | `p_staff_user_id` |
+| Indexes | `idx_<schema>_<table>_<cols>` | `idx_anthea_pos_sales_created_at` |
+
+## JSON API (wire format)
+
+- **camelCase** keys in request/response bodies: `productId`, `paymentMethod`, `createdAt`.
+- Pydantic: `Field(alias="camelCase")` + `populate_by_name=True` on input models.
+- Output models: declare fields directly in camelCase.
+
+## URL paths
+
+- lowercase, hyphen avoided — use slashes: `/api/pos/sales`, `/api/catalog/products`.
+- Route params: `{saleId}` in OpenAPI docs; path `/api/pos/sales/{sale_id}` (FastAPI snake in path is OK if consistent).
+
+## Environment variables
+
+| Prefix | Where | Example |
+|--------|-------|---------|
+| `VITE_` | web build (public) | `VITE_API_URL`, `VITE_SUPABASE_URL` |
+| none | API runtime (secret) | `SUPABASE_SERVICE_ROLE_KEY` |
+| `R2_` | API storage | `R2_BUCKET_NAME` |
+| `CORS_` | API optional | `CORS_EXTRA_ORIGINS` |
+
+Rename legacy `VITE_BACKEND_URL` → `VITE_API_URL` in new projects; support both during migration.
+
+## Git branches and commits
+
+- Branches: `feat/short-description`, `fix/short-description`, `chore/short-description`.
+- Commits: imperative mood, ≤ 72 char subject — `fix(pos): validate deferred contact on pago_despues`.
+
+## Product / domain terms (this vertical)
+
+- Spanish UI labels; English in code identifiers is fine: `paymentMethod` value `pago_despues` not `payLater`.
+- Roles: `admin`, `empleado` — lowercase string enums in DB and code.
+
+## Anti-patterns
+
+- ❌ `product_ts` when meaning product id — use `product_id`
+- ❌ Mixed camelCase and snake_case in same JSON response
+- ❌ `data`, `temp`, `handler1` — use domain names
+- ❌ Spanish function names (`crearVenta`) — code in English, UI in Spanish

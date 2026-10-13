@@ -1,0 +1,49 @@
+---
+description: WhatsApp button integration that opens the app directly, not a browser window
+globs: frontend/src/**/*.{js,jsx,ts,tsx}
+alwaysApply: false
+---
+
+# WhatsApp Deep Link
+
+Use the `whatsapp://` URI scheme to open the app directly. `https://wa.me/` redirects through the browser first.
+
+## URL construction
+
+```js
+// ✅ Opens WhatsApp app directly (no browser window)
+const waUrl = `whatsapp://send?phone=${phone}&text=${encodeURIComponent(text)}`;
+
+// ❌ Opens browser tab first, then may redirect to app
+const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+```
+
+## Navigation — always use window.location.href
+
+```jsx
+// ✅ Stays in app, hands off to WhatsApp
+<button onClick={() => { window.location.href = waUrl; }}>
+  Enviar por WhatsApp
+</button>
+
+// ❌ Forces a new browser tab
+<a href={waUrl} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+
+// ❌ Also opens browser tab
+window.open(waUrl, '_blank');
+```
+
+## Phone format
+
+- Strip all non-digits, then prepend country code: `52` + last 10 digits.
+- `whatsapp://` scheme does **not** accept `+` prefix — use digits only.
+
+```js
+const digits = phone.replace(/\D/g, '');
+const full = digits.length === 10 ? `52${digits}` : digits;
+const waUrl = `whatsapp://send?phone=${full}&text=${encodeURIComponent(text)}`;
+```
+
+## Fallback
+
+If WhatsApp is not installed, `whatsapp://` silently fails on desktop. Acceptable for this app (mobile-first). No fallback needed unless desktop support is explicitly required.

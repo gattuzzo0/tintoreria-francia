@@ -1,0 +1,112 @@
+---
+description: Documentation standards — README, env catalog, runbooks, migrations, API docs
+alwaysApply: true
+---
+
+# Documentation Standards
+
+Docs live in the repo and stay accurate after every architectural change. **No orphan Markdown** — don't create summary/changelog files unless explicitly requested.
+
+## Required documents
+
+| Document | Location | Audience |
+|----------|----------|----------|
+| Project README | `README.md` (root) | everyone |
+| Env template | `.env.example`, `apps/*/.env.example` | developers |
+| Migrations guide | `supabase/README.md` | developers + deploy |
+| API reference | auto OpenAPI `/docs` + shared Zod | developers |
+
+## Root README must include
+
+1. **What** the product does (2–3 sentences).
+2. **Stack** — React, Vite, Node API (or FastAPI legacy note), Supabase.
+3. **Repo structure** — tree with `apps/web`, `apps/api`, `packages/shared`, `supabase/`.
+4. **Prerequisites** — Node LTS, Python 3.12 if legacy API, Supabase project.
+5. **Local dev** — single command or ordered steps (install, env, run web + api).
+6. **Environment variables table**:
+
+| Variable | App | Required | Description |
+|----------|-----|----------|-------------|
+| `VITE_API_URL` | web | prod yes | Public API base URL |
+| `VITE_SUPABASE_URL` | web | yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | api | yes | Server only — never web |
+
+7. **Deploy** — two Vercel projects, root directories, Preview vs Production env parity warning.
+8. **Quality** — `npm run eslint`, `npm run test`, pre-commit Husky.
+9. **Database** — how to apply migrations; link `supabase/README.md`.
+
+Update README in the **same PR** that changes structure, env names, or deploy steps.
+
+## `supabase/README.md`
+
+- How to install Supabase CLI (optional).
+- Order to apply migrations manually (SQL Editor) if CLI not used.
+- Post-migration checklist: expose schema, verify RLS, run smoke test.
+- Staging vs production project IDs — names only, not keys.
+
+## `.env.example`
+
+- Every required variable with placeholder, no secrets.
+- Comment per var: which Vercel project, build-time vs runtime.
+- Group: Supabase, API, R2, CORS, observability (Sentry DSN).
+
+```env
+# Web (Vite build) — safe to prefix VITE_
+VITE_SUPABASE_URL=https://xxxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...placeholder
+VITE_API_URL=
+
+# API (runtime) — NEVER commit real values
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_JWT_SECRET=
+```
+
+## Runbooks (add `docs/runbooks/` when ops need them)
+
+Short, actionable — one page each:
+
+- `pos-not-loading-sales.md` — check `VITE_API_URL`, `/api/health`, CORS, token.
+- `schema-migration.md` — staging first, apply SQL, deploy API, smoke POST sale.
+- `rotate-secrets.md` — service_role, JWT secret, R2 keys.
+
+Format per runbook:
+
+1. Symptoms
+2. Checks (commands with curl)
+3. Fix
+4. Rollback
+
+## Code documentation
+
+- **Don't** document what code already says.
+- **Do** document: RPC invariants, payment method rules, idempotency behavior, schema exposure requirements.
+- SQL migrations: header comment with purpose and rollback SQL reference.
+
+## API documentation
+
+- Keep OpenAPI accurate — Pydantic models / Fastify schemas are source.
+- Shared Zod schemas in `packages/shared` match OpenAPI — note in PR if temporarily diverged.
+- Document breaking changes in PR description, not separate CHANGELOG unless team maintains one.
+
+## Cursor / AI rules
+
+- Constitution rules in `.cursor/rules/` (`architecture.mdc`, etc.) override ad-hoc prompts.
+- When rules conflict with code, **fix code or update rules in same PR** — never leave silent drift.
+- Granular legacy rules (e.g. `frontend-tooling.mdc`) supplement constitution; constitution wins on conflict.
+
+## Anti-patterns
+
+- ❌ README claiming "frontend only" when API exists
+- ❌ Secret values in README or committed `.env`
+- ❌ Migration only in Supabase dashboard — not in git
+- ❌ Auto-generated summary `.md` files after every task
+- ❌ English/Spanish mix in user-facing README without project convention
+- ❌ Stale env var names (`REACT_APP_*`, `VITE_BACKEND_URL` without alias note)
+
+## PR documentation checklist
+
+- [ ] README updated if structure/env/deploy changed
+- [ ] `.env.example` updated if new vars
+- [ ] Migration file + `supabase/README.md` if schema changed
+- [ ] Runbook updated if ops steps changed

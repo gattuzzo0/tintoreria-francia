@@ -1,0 +1,378 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant short (@media (min-width: 64rem) and (max-height: 820px));
+
+:root {
+  color-scheme: light;
+  --background: oklch(0.975 0.004 250);
+  --foreground: oklch(0.19 0.025 262);
+  --card: oklch(0.995 0.002 250);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.995 0.002 250);
+  --popover-foreground: var(--foreground);
+  --primary: #012653;
+  --primary-foreground: oklch(0.985 0.004 250);
+  --secondary: oklch(0.94 0.012 250);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.95 0.006 250);
+  --muted-foreground: oklch(0.52 0.02 260);
+  --accent: oklch(0.93 0.03 250);
+  --accent-foreground: oklch(0.34 0.11 258);
+  --destructive: oklch(0.577 0.2 27);
+  --warning: oklch(0.8 0.16 85);
+  --warning-foreground: oklch(0.32 0.07 70);
+  --border: oklch(0.905 0.008 255);
+  --input: oklch(0.89 0.01 255);
+  --ring: var(--primary);
+  --radius: 0.75rem;
+
+  --intro-sky-light: #f1f7fb;
+  --intro-sky: #c6dbe8;
+  --intro-sky-deep: #9dbcd1;
+  --intro-glow: #8fd3ff;
+  --intro-ember: #ffb347;
+  --intro-steam-shade: rgb(70 105 135 / 0.28);
+}
+
+@theme inline {
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
+
+.ticket-edge {
+  height: 8px;
+  background-image:
+    linear-gradient(135deg, var(--card) 4px, transparent 0),
+    linear-gradient(225deg, var(--card) 4px, transparent 0);
+  background-size: 8px 8px;
+  background-repeat: repeat-x;
+}
+
+.perforation {
+  background-image: radial-gradient(circle, var(--background) 3px, transparent 3.5px);
+  background-size: 14px 8px;
+  background-repeat: repeat-x;
+  background-position: center;
+}
+
+/* ---------------------------------------------------------------------
+   Intro al iniciar sesión (components/pos/login-intro.tsx) · 2.7 s + 0.3 s de salida
+   --------------------------------------------------------------------- */
+.tf-intro {
+  background:
+    linear-gradient(to top, var(--intro-sky-deep), transparent 55%),
+    radial-gradient(ellipse at 50% 40%, var(--intro-sky-light) 0%, var(--intro-sky) 70%, var(--intro-sky-deep) 100%);
+  transition: opacity 0.3s ease-out;
+}
+
+.tf-intro-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(56vmin, 360px);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+}
+
+.tf-intro-logo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 24px 60px -24px rgb(1 38 83 / 0.55);
+  animation:
+    tf-intro-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) both,
+    tf-intro-breathe 2.1s ease-in-out 0.6s;
+}
+.tf-intro-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+.tf-intro-glint {
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(115deg, transparent 42%, rgb(255 255 255 / 0.75) 50%, transparent 58%);
+  animation: tf-intro-glint 0.5s ease-in-out 2.15s both;
+}
+
+.tf-intro-orbit {
+  position: absolute;
+  inset: -3%;
+  animation: tf-intro-orbit 0.65s linear 0.1s both;
+}
+.tf-intro-trail {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(transparent 0turn 0.7turn, var(--intro-glow) 0.96turn, #fff 1turn);
+  mask: radial-gradient(closest-side, transparent 94%, #000 96%, #000 99%, transparent 100%);
+  filter: blur(1px) drop-shadow(0 0 6px var(--intro-glow));
+}
+.tf-intro-spark {
+  position: absolute;
+  top: 1.5%;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 14%, var(--intro-glow) 34%, transparent 70%);
+}
+.tf-intro-spark::before,
+.tf-intro-spark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 260%;
+  height: 2px;
+  translate: -50% -50%;
+  background: linear-gradient(to right, transparent, #fff, transparent);
+}
+.tf-intro-spark::after {
+  rotate: 90deg;
+  width: 160%;
+}
+
+.tf-intro-bubble-arm {
+  position: absolute;
+  inset: -3%;
+  rotate: var(--angle);
+  pointer-events: none;
+}
+.tf-intro-bubble {
+  position: absolute;
+  top: 1.5%;
+  left: 50%;
+  translate: -50% -50%;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 32% 30%,
+    rgb(255 255 255 / 0.95) 0 12%,
+    rgb(200 232 255 / 0.35) 42%,
+    rgb(255 255 255 / 0.08) 70%
+  );
+  box-shadow: 0 0 6px rgb(143 211 255 / 0.6);
+  animation: tf-intro-bubble 0.8s ease-out both;
+}
+
+.tf-intro-star {
+  position: absolute;
+  top: 50%;
+  width: 18%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background:
+    radial-gradient(circle, #fff 0 6%, transparent 26%),
+    linear-gradient(to right, transparent 47%, #fff 50%, transparent 53%),
+    linear-gradient(to bottom, transparent 47%, #fff 50%, transparent 53%);
+  mask: radial-gradient(circle, #000 18%, transparent 68%);
+  filter: drop-shadow(0 0 4px var(--intro-glow));
+  animation: tf-intro-star 0.5s ease-out 2s both;
+}
+
+.tf-intro-dust {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px 1px #fff;
+  animation: tf-intro-dust 2.4s ease-in-out both;
+}
+
+/* Vapor delante del logo: chorro izquierda → derecha y regreso derecha → izquierda.
+   La máscara de ruido estirada en horizontal deshilacha las bocanadas en vetas; feDisplacementMap
+   no sirve aquí porque Chrome no lo pinta en elementos HTML. Una sola textura sin repetir:
+   stitchTiles deja una costura vertical visible al desplazarla. */
+.tf-intro-steam {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  filter: blur(2.5px) drop-shadow(0 8px 14px var(--intro-steam-shade));
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2800' height='1500'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0035 0.014' numOctaves='4' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1.8 -0.25'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mask-size: 2800px 1500px;
+  mask-repeat: no-repeat;
+  animation: tf-intro-steam-drift 3s linear both;
+}
+.tf-intro-jet,
+.tf-intro-billow {
+  position: absolute;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, #fff 20%, rgb(255 255 255 / 0.8) 50%, transparent);
+}
+.tf-intro-jet {
+  left: -12vw;
+  aspect-ratio: 2.4;
+  animation: tf-intro-jet 0.85s cubic-bezier(0.15, 0.7, 0.35, 1) both;
+}
+.tf-intro-billow {
+  aspect-ratio: 1.3;
+  animation: tf-intro-billow 1.2s cubic-bezier(0.25, 0.6, 0.4, 1) both;
+}
+.tf-intro-wisp {
+  position: absolute;
+  aspect-ratio: 1.8;
+  translate: -50% -50%;
+  rotate: var(--tilt);
+  border: 2px solid;
+  border-color: rgb(255 255 255 / 0.75) transparent rgb(255 255 255 / 0.4) transparent;
+  border-radius: 50%;
+  animation: tf-intro-wisp 0.9s ease-out both;
+}
+.tf-intro-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 45% 50%, #fff 30%, rgb(255 255 255 / 0.7));
+  animation: tf-intro-veil 1s ease-in-out 1.35s both;
+}
+.tf-intro-ember {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px 2px var(--intro-ember);
+  animation: tf-intro-ember 0.9s ease-out both;
+}
+
+@keyframes tf-intro-pop {
+  0% { opacity: 0; transform: scale(0.6); filter: blur(10px); }
+  60% { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes tf-intro-breathe {
+  50% { transform: scale(1.025); }
+}
+@keyframes tf-intro-glint {
+  from { transform: translateX(-60%); }
+  to { transform: translateX(60%); }
+}
+@keyframes tf-intro-orbit {
+  0% { opacity: 0; rotate: 0turn; }
+  8% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; rotate: 1turn; }
+}
+@keyframes tf-intro-bubble {
+  0% { opacity: 0; transform: scale(0); }
+  15% { opacity: 0.95; transform: scale(1); }
+  100% { opacity: 0; transform: translateY(calc(var(--drift) * -1)) scale(0.85); }
+}
+@keyframes tf-intro-star {
+  0% { opacity: 0; transform: scale(0) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.15) rotate(45deg); }
+  100% { opacity: 0; transform: scale(0.4) rotate(90deg); }
+}
+@keyframes tf-intro-dust {
+  0% { opacity: 0; transform: translateY(0); }
+  40% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(var(--rise)); }
+}
+/* Las vetas viajan con el vapor: primero a la derecha, luego de regreso. */
+@keyframes tf-intro-steam-drift {
+  0%, 23% { mask-position: -700px -200px; }
+  45% { mask-position: -180px -190px; }
+  100% { mask-position: -640px -250px; }
+}
+@keyframes tf-intro-jet {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.3, 0.45); }
+  12% { opacity: 1; }
+  60% { opacity: 0.95; transform: translate(calc(var(--to) * 0.8), var(--wave)) scale(1.05, 1); }
+  100% { opacity: 0; transform: translate(var(--to), calc(var(--wave) * -0.6)) scale(1.7, 1.6); }
+}
+@keyframes tf-intro-wisp {
+  0% { opacity: 0; transform: translateX(0) scale(0.6); }
+  25% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateX(6vw) rotate(70deg) scale(1.6); }
+}
+@keyframes tf-intro-billow {
+  0% { opacity: 0; transform: translateX(0) scale(0.45); }
+  22% { opacity: 1; transform: translateX(calc(var(--to) * 0.15)) scale(1.15); }
+  65% { opacity: 0.85; transform: translateX(calc(var(--to) * 0.75)) scale(2.1); }
+  100% { opacity: 0; transform: translateX(var(--to)) scale(2.6); }
+}
+@keyframes tf-intro-veil {
+  0% { opacity: 0; }
+  35% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+@keyframes tf-intro-ember {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  30% { opacity: 1; transform: translate(calc(var(--dx) * 0.3), calc(var(--rise) * 0.3)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--rise)) scale(0.6); }
+}
+
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  dialog::backdrop {
+    background: transparent !important;
+  }
+  #print-ticket,
+  #print-ticket * {
+    visibility: visible !important;
+  }
+  #print-ticket {
+    position: fixed !important;
+    inset: 0 auto auto 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  #print-ticket * {
+    color: #000 !important;
+    border-color: #000 !important;
+  }
+  .ticket-edge {
+    display: none !important;
+  }
+}

@@ -1,0 +1,123 @@
+---
+description: Frontend — React 19, Vite 6, TypeScript, MUI, Tailwind v4, features, routing, data fetching
+globs: apps/web/**/*.{ts,tsx},frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend
+
+Stack: **React 19**, **Vite 6**, **TypeScript strict**, **React Router 7**, **MUI 6** + **Tailwind v4** (`@tailwindcss/vite`), **TanStack Query**, **Lucide** icons.
+
+Legacy path `frontend/` follows same rules as `apps/web/`.
+
+## Entry and providers
+
+`main.tsx` → `App` only. Provider order (outside → in):
+
+```tsx
+<ThemeProvider>
+  <CssBaseline />
+  <QueryClientProvider>
+    <AuthProvider>
+      <BrowserRouter>...</BrowserRouter>
+    </AuthProvider>
+  </QueryClientProvider>
+</ThemeProvider>
+```
+
+Domain providers (`CartProvider`, etc.) live inside **layout routes**, not global `App`, unless truly app-wide.
+
+## Folder structure
+
+```
+src/
+├── app/              # App.tsx, routes.tsx, providers.tsx, query-client.ts
+├── features/
+│   ├── auth/
+│   ├── shop/
+│   └── pos/
+├── components/       # shared UI only
+├── lib/              # api-client, supabase (auth only), muiTheme, format
+└── assets/           # brand-static only — not product catalog images
+```
+
+Product images come from API (`imageUrl` / file proxy), not 40+ PNG imports in TS.
+
+## Routing
+
+- Nested layouts with `Outlet` (`ShopLayout` for public shop).
+- Protected routes: guard component + `?next=` redirect to login.
+- `React.lazy` + `Suspense` for heavy routes (`/pos`, admin).
+- Global `ErrorBoundary` on shop shell; route-specific boundary on high-risk pages (POS).
+- `Route path="*"` → `NotFoundPage`.
+
+## Auth (client)
+
+- `lib/supabase.ts`: anon client singleton; `isSupabaseConfigured` guard.
+- **Role and `canAccessPos` from `GET /api/me` only** — not `supabase.from('profiles')`.
+- `ready` flag before guards; `onAuthStateChange` + cleanup on unmount.
+- Pass `session.access_token` explicitly to API helpers — never read token from `localStorage` manually.
+
+## API client
+
+- One `lib/api-client.ts`: `apiUrl()`, Bearer header, unified error type, `backendHint()`.
+- Domain modules: `features/*/api/*.queries.ts` wrapping TanStack Query.
+- On 401: `refreshSession()` once, retry once (POS-critical paths).
+
+```ts
+function apiUrl(path: string): string {
+  const base = (import.meta.env.VITE_API_URL ?? import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return base ? `${base}${p}` : p;
+}
+```
+
+Dev: empty base → Vite proxy `/api` → local API. Prod: `VITE_API_URL` required at build.
+
+## TanStack Query defaults
+
+| Query | staleTime | notes |
+|-------|-----------|-------|
+| Catalog | 60_000 | public, cacheable |
+| Sales / staff | 0 | `refetchOnWindowFocus` for POS |
+| `/api/me` | invalidate on signIn/signOut |
+
+Mutations: `onSuccess` → invalidate related queries.
+
+## Styling
+
+- Tokens in `index.css` (`:root` + `@theme`); MUI theme mirrors same hex in `lib/muiTheme.ts`.
+- Layout/spacing: Tailwind. Complex widgets: MUI. No third CSS-in-JS runtime.
+- Fonts via `index.html` Google Fonts link — not `@import` in CSS.
+
+## Forms
+
+- MUI `TextField` + HTML validation for simple forms.
+- Zod schemas from `@repo/shared` for non-trivial validation — parse before submit.
+- No Formik/react-hook-form until 5+ complex forms.
+
+## Performance
+
+- Lazy routes for POS/admin.
+- Hero video: `preload="metadata"`, poster, `prefers-reduced-motion` fallback.
+- `manualChunks` for `vendor-react`, `vendor-mui` in `vite.config.ts`.
+- No static catalog bundled as dozens of image imports.
+
+## PWA / icons
+
+`public/`: `favicon.svg`, `apple-touch-icon.png` (180×180), `icon-192.png`, `icon-512.png`, `site.webmanifest`. See `web-app-icons.mdc` if present.
+
+## Tooling
+
+- `vite.config.ts`: `strictPort: true`, proxy `/api`, `appType: "spa"`.
+- Build: `tsc -b && vite build`.
+- ESLint flat config; Husky at monorepo root runs eslint on web.
+- Declare all `VITE_*` in `vite-env.d.ts`.
+
+## Anti-patterns
+
+- ❌ `REACT_APP_*`, `setupProxy.js` (CRA legacy)
+- ❌ `fetch` to Supabase PostgREST for business data
+- ❌ `process.env` — use `import.meta.env.VITE_*`
+- ❌ Export utilities from `*.tsx` component files (breaks HMR) — use `lib/` or feature `hooks/`
+- ❌ Provider inside router if guards need auth context

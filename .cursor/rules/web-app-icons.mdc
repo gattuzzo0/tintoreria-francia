@@ -1,0 +1,29 @@
+---
+description: Iconos PWA — iOS (apple-touch-icon PNG), Android/manifest (site.webmanifest + icon-192/512); el favicon SVG no basta para pantalla de inicio
+alwaysApply: true
+---
+
+# Iconos de web app (iOS, Android, escritorio)
+
+## iOS / iPadOS (Safari)
+
+Al **Añadir a pantalla de inicio**, Safari **no usa** `rel="icon"` con **SVG** como icono del acceso.
+
+- **`frontend/public/apple-touch-icon.png`** — PNG **180×180** px (rasterizar desde `favicon.svg` si cambia la marca).
+- En **`frontend/index.html`**: `rel="apple-touch-icon"` y opcional `apple-mobile-web-app-title`.
+
+## Android y navegadores con manifiesto (Chrome, Edge, etc.)
+
+El icono al **instalar** o **añadir a inicio** sale del **manifiesto web**, no de `apple-touch-icon`.
+
+- **`frontend/public/site.webmanifest`** — `name`, `short_name`, `start_url`, `scope`, `display`, `theme_color`, `background_color`, array **`icons`** con PNG.
+- **`frontend/public/icon-192.png`** y **`frontend/public/icon-512.png`** — tamaños habituales para `purpose: "any"`; el **512** también puede declararse como **`maskable`** (mismo archivo si el diseño tiene margen seguro).
+- En **`frontend/index.html`**: `<link rel="manifest" href="/site.webmanifest" />`.
+
+## Si se actualiza `favicon.svg`
+
+Regenerar **`apple-touch-icon.png`**, **`icon-192.png`** e **`icon-512.png`** para que todo coincida (misma fuente SVG).
+
+## Nota para usuarios
+
+Tras desplegar, a veces hace falta **quitar el acceso antiguo** de la pantalla de inicio y **volver a añadir** el sitio (caché de iconos).

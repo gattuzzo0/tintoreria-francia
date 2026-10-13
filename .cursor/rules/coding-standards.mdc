@@ -1,0 +1,72 @@
+---
+description: Coding standards — TypeScript, Python, React, error handling, comments, PR hygiene
+alwaysApply: true
+---
+
+# Coding Standards
+
+Readable, boring code beats clever code. Match existing patterns in the file you edit.
+
+## General
+
+- **Minimize scope** — smallest correct change; no drive-by refactors.
+- **No dead code** — remove unused exports, endpoints, env vars.
+- **Comments** — only non-obvious business rules or external constraints; no narrating the obvious.
+- **Language** — UI strings and API `detail` messages in **Spanish** for this product line unless project specifies English.
+- **Money** — integers only (pesos or cents); never `float` for prices/totals.
+
+## TypeScript (web + api)
+
+- `strict: true`; `noUnusedLocals`, `noUnusedParameters`.
+- `import type { X }` with `verbatimModuleSyntax: true`.
+- Prefer `??` and optional chaining; avoid `as any` — use Zod parse at boundaries.
+- Async: `async/await`; handle errors explicitly — no empty `catch`.
+- Named exports for utilities; default export for page/route components only.
+
+## Python (legacy API)
+
+- Python **3.12+**; `from __future__ import annotations` in modules using `X | Y`.
+- `backend/.python-version` committed.
+- Type hints on public functions; Pydantic v2 for request/response models.
+- `asyncio.to_thread` for sync Supabase/httpx in async handlers.
+- `raise HTTPException(...) from None` when replacing internal errors for clients.
+
+## React
+
+- Function components only; hooks at top level.
+- `useMemo` / `useCallback` for context provider values and expensive derived data — not everywhere.
+- `useEffect` deps complete — don't silence `react-hooks/exhaustive-deps` without comment.
+- One component per file for pages; colocate small subcomponents if not reused.
+- `ErrorBoundary` class component where needed — functional components can't be boundaries.
+
+## Error handling
+
+**API:** correct HTTP status; JSON `{ detail }` (FastAPI) or `{ error: { code, message } }` (Node target). Log full trace server-side only.
+
+**Web:** typed API errors (`ApiHttpError`); show user-actionable message + `backendHint()` on 502/503. Never show stack to users except dev-only boundary.
+
+## File size
+
+- Route file > ~200 lines → extract service.
+- Component > ~300 lines → split or extract hooks.
+- `products.ts`-style god files → migrate to API, don't extend.
+
+## Git / PR
+
+- Husky runs eslint before commit — fix lint, don't `--no-verify`.
+- One logical change per commit when possible.
+- Don't commit `.env`, `.vercel` with secrets, `node_modules`, `dist`.
+
+## Dependencies
+
+- Pin major versions in package.json; lockfiles committed.
+- Add dependency only with justification — prefer stdlib/platform first.
+- Python: `requirements.txt` with minimum versions; prefer lockfile when team agrees.
+
+## Anti-patterns
+
+- ❌ `@ts-ignore` / `# type: ignore` without explanation
+- ❌ Business logic in React components that should be in services or hooks
+- ❌ `console.log` left in production paths — use structured logger
+- ❌ Duplicating validation only on frontend
+- ❌ Hardcoded hex colors in components — use design tokens (`bg-primary`, theme palette)

@@ -1,0 +1,312 @@
+---
+description: Stack y arquitectura del backend FastAPI (server.py + paquete api/ + CORS + prefijo /api + healthcheck)
+alwaysApply: true
+---
+
+# Backend: stack y arquitectura FastAPI
+
+Plantilla obligatoria del backend para apps full-stack en este monorepo. Pareja con `backend-supabase-auth.mdc`, `backend-api-conventions.mdc` y `vercel-deployment.mdc`.
+
+## Dependencias (`backend/requirements.txt`)
+
+```
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-dotenv>=1.0.0
+supabase>=2.10.0
+PyJWT[crypto]>=2.9.0
+httpx>=0.27.0
+```
+
+Añadir `boto3` solo si se va a usar Cloudflare R2 (ver `cloudflare-r2-storage.mdc`).
+
+## Estructura de carpetas
+
+```
+backend/
+├── server.py                # Entry: instancia FastAPI, CORS, include_router
+├── api/
+│   ├── __init__.py
+│   ├── router.py            # api_router raíz, monta sub-routers, /health, /me
+│   ├── config.py            # load_dotenv + getters cacheados de variables
+│   ├── supabase_client.py   # get_supabase() singleton (service_role)
+│   ├── auth_jwt.py          # require_access_token (HTTPBearer + JWT)
+│   ├── deps.py              # Dependencies tipo require_<rol>(...)
+│   └── <dominio>_routes.py  # Routers por dominio (pos_routes.py, etc.)
+├── supabase_schema.sql      # Esquema completo + RPCs + RLS
+├── bootstrap_admin.py       # Script opcional para promover usuarios
+├── test_db_connection.py    # Smoke test contra Supabase
+├── requirements.txt
+├── vercel.json
+├── .env                     # Plantilla (sin secretos)
+└── .env.local               # Valores reales locales (ignorado)
+```
+
+Convenciones:
+
+- **Solo un paquete `api/`**; no anidar `api/v1/api/`. Si más adelante hay versionado, añadir prefijo en `include_router(prefix="/v1")`.
+- **Un módulo de routes por dominio** (`pos_routes.py`, `catalog_routes.py`); cada uno expone un `APIRouter` y se monta en `router.py`.
+- **No definir endpoints en `server.py`** salvo `GET /` para health visual; toda la API real va en `api/router.py`.
+
+## `backend/server.py` mínimo
+
+```python
+import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.router import api_router
+
+app = FastAPI(title="<app> API", version="0.1.0")
+
+# CORS debe reflejar el Origin concreto (los browsers no aceptan "*" con Authorization).
+# Vercel previews tienen subdominio que cambia: usar regex *.vercel.app además de la lista fija.
+_base_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://<frontend-prod>.vercel.app",
+    "https://<dominio-propio>",
+    "https://www.<dominio-propio>",
+]
+_extra = os.getenv("CORS_EXTRA_ORIGINS", "")
+_extra_origins = [o.strip() for o in _extra.split(",") if o.strip()]
+_origins = list(dict.fromkeys(_base_origins + _extra_origins))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_origin_regex=r"^https://[\w.-]+\.vercel\.app$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api")
+
+
+@app.get("/")
+def root():
+    return {
+        "service": "<app>-api",
+        "docs": "/docs",
+        "corsProfile": "origins-plus-vercel-app-regex",
+    }
+```
+
+Reglas CORS:
+
+- **Lista fija explícita** + **regex de previews** + **`CORS_EXTRA_ORIGINS`** opcional. No depender solo de variables de entorno: si una variable se borra por accidente, los previews dejan de funcionar.
+- **`allow_credentials=True`**: requerido si el frontend usa cookies o si quieres mandar `Authorization`. Con esto, `*` en `allow_origins` no es válido.
+- **Definir CORS en código** (middleware), no en `vercel.json`, salvo casos específicos. Mezclar ambos suele duplicar headers.
+- El campo `corsProfile` en `GET /` ayuda a verificar qué versión está sirviendo Production sin abrir logs.
+
+## `backend/api/__init__.py`
+
+```python
+__all__: list[str] = []
+```
+
+Vacío explícito; el paquete existe solo para agrupar módulos.
+
+## `backend/api/config.py`
+
+Configuración centralizada con `lru_cache`. Carga `.env` desde `backend/`:
+
+```python
+import os
+from functools import lru_cache
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+def _env(*names: str) -> str | None:
+    for n in names:
+        v = os.getenv(n)
+        if v:
+            return v.strip()
+    return None
+
+@lru_cache
+def get_supabase_url() -> str | None:
+    return _env("SUPABASE_URL", "supabase_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL")
+
+@lru_cache
+def get_supabase_service_role_key() -> str | None:
+    return _env("SUPABASE_SERVICE_ROLE_KEY", "supabase_SUPABASE_SERVICE_ROLE_KEY")
+
+@lru_cache
+def get_supabase_jwt_secret() -> str | None:
+    return _env("SUPABASE_JWT_SECRET", "JWT_SECRET")
+
+def is_database_configured() -> bool:
+    return bool(get_supabase_url() and get_supabase_service_role_key())
+```
+
+Reglas:
+
+- **Aceptar varios alias** del mismo valor (`SUPABASE_URL`, `supabase_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`); Vercel a veces inyecta nombres prefijados por el integrador.
+- **`is_database_configured()`** se usa para devolver **503** con mensaje claro cuando falta configurar el entorno, en vez de 500 sin contexto.
+- Nunca leer `os.getenv` disperso por todo el código; siempre pasar por `config.py` y getters cacheados.
+
+## `backend/api/supabase_client.py`
+
+```python
+from functools import lru_cache
+from supabase import Client, create_client
+from api.config import get_supabase_service_role_key, get_supabase_url
+
+@lru_cache
+def get_supabase() -> Client:
+    url = get_supabase_url()
+    key = get_supabase_service_role_key()
+    if not url or not key:
+        raise RuntimeError("Supabase URL o service role key no configurados")
+    return create_client(url, key)
+```
+
+Reglas:
+
+- Cliente **singleton** con `lru_cache` (un cliente por proceso). En serverless cada invocación frío crea uno nuevo, lo cual es correcto.
+- Cliente con **service_role** → bypassa RLS. Validar auth/roles **antes** de usarlo (`require_access_token` y `require_<rol>`).
+- Ver `supabase-integration.mdc` para reglas de RLS y de esquema SQL.
+
+## `backend/api/router.py`
+
+Router raíz: monta sub-routers + endpoints transversales (`/health`, `/me`).
+
+```python
+import asyncio, logging
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
+
+from api.auth_jwt import require_access_token
+from api.config import is_database_configured
+from api.pos_routes import pos_router
+from api.supabase_client import get_supabase
+
+logger = logging.getLogger(__name__)
+
+api_router = APIRouter()
+api_router.include_router(pos_router, prefix="/pos")
+
+
+@api_router.get("/health")
+async def health():
+    if not is_database_configured():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"ok": False, "detail": "Base de datos no configurada"},
+        )
+
+    def ping():
+        get_supabase().table("profiles").select("id").limit(1).execute()
+
+    try:
+        await asyncio.to_thread(ping)
+    except Exception:
+        logger.exception("Health check: fallo al consultar Supabase")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"ok": False, "detail": "No se pudo conectar a Supabase"},
+        )
+
+    return {"ok": True, "database": "connected"}
+
+
+@api_router.get("/me")
+async def me(claims: dict = Depends(require_access_token)):
+    # Devuelve userId, email, role y banderas derivadas para que el frontend
+    # decida qué UI mostrar sin volver a leer la BD.
+    ...
+```
+
+Reglas:
+
+- **`/api/health`** debe pingear la BD; si falla, **503** con detalle. Nunca 200 sin verificar realmente la conexión.
+- **`/api/me`** lee el rol de `profiles` y devuelve banderas (`canAccessPos`, etc.) que el frontend usa.
+- El SDK de Supabase es **síncrono**: envolver siempre en `asyncio.to_thread` para no bloquear el event loop (ver `backend-api-conventions.mdc`).
+
+## Vercel deploy del backend (`backend/vercel.json`)
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [{ "src": "server.py", "use": "@vercel/python" }],
+  "routes": [{ "src": "/(.*)", "dest": "server.py" }]
+}
+```
+
+Notas:
+
+- Backend y frontend son **dos proyectos Vercel distintos**; root del backend es `backend/` (ver `vercel-deployment.mdc` y `vercel-preview-production-parity.mdc`).
+- Variables de entorno (Supabase, JWT, R2, etc.) duplicadas en el dashboard de Vercel del backend.
+- Aplicar el SQL en `supabase_schema.sql` desde el SQL Editor de Supabase; el código no auto-crea tablas.
+
+## Python version (`backend/.python-version`)
+
+Crear siempre este archivo para que Vercel use Python 3.12 y no el default (3.9):
+
+```
+3.12
+```
+
+Sin este archivo, la sintaxis `str | None` (PEP 604, Python 3.10+) falla en cold start con `FUNCTION_INVOCATION_FAILED` sin ningún mensaje de error visible. Añadir `from __future__ import annotations` a todos los módulos que usen `X | Y` como failsafe adicional.
+
+## CORS en Vercel Python — comportamiento crítico
+
+Vercel intercepta las peticiones `OPTIONS` (preflight CORS) **a nivel de CDN**, antes de invocar la función Python, cuando se usa `"routes"` con `"dest": "server.py"`.
+
+**Resultado sin fix**: el preflight retorna `204` sin `Access-Control-Allow-Origin` → el browser bloquea todas las requests con `Authorization` → error `CORS policy` en consola aunque el backend esté perfectamente en línea.
+
+**Fix probado y confirmado**: usar `"routes"` con `"dest"` **Y** el `headers` config de Vercel juntos:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [{ "src": "server.py", "use": "@vercel/python" }],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://<dominio-propio>" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Authorization, Content-Type" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
+      ]
+    }
+  ],
+  "routes": [{ "src": "/(.*)", "dest": "server.py" }]
+}
+```
+
+El `headers` config de Vercel aplica a **todas** las respuestas del edge (incluyendo el `204` del preflight interceptado). El `CORSMiddleware` de FastAPI maneja el resto (requests reales GET/POST y orígenes adicionales como previews).
+
+Reglas CORS con este setup:
+
+- **NO usar `"rewrites"`** en lugar de `"routes"`** para Python — `rewrites` hace que Vercel sirva el `index.html` del SPA fallback en vez de invocar la función.
+- **El `headers` config solo necesita el dominio de producción**; los previews de Vercel (`*.vercel.app`) los maneja el `CORSMiddleware` de FastAPI en las respuestas reales (no en el preflight).
+- **No quitar `CORSMiddleware` de FastAPI** — sin él, FastAPI responde `405 Method Not Allowed` a OPTIONS en vez de un preflight correcto.
+- **Verificar preflight** con `curl -X OPTIONS <url> -H "Origin: <dominio>" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: Authorization" -i` — debe retornar `200` con `Access-Control-Allow-Origin`.
+
+Diagnóstico rápido de errores CORS en Vercel Python:
+
+| Síntoma | Causa |
+|---|---|
+| OPTIONS retorna `204` sin CORS headers, `Content-Disposition: inline; filename="index.html"` | Vercel intercepta OPTIONS antes de la función — falta `headers` config en `vercel.json` |
+| OPTIONS retorna `405 Method Not Allowed` desde FastAPI | `headers` config añadido correctamente pero falta `CORSMiddleware` en FastAPI |
+| GET/POST retorna HTML (`<!doctype`) | Se usó `"rewrites"` en vez de `"routes"` — Vercel sirve SPA fallback |
+| `FUNCTION_INVOCATION_FAILED` en cold start | Sintaxis Python 3.10+ (`X \| None`) sin `from __future__ import annotations` y sin `.python-version` |
+
+## Antipatrones
+
+- ❌ CORS solo con `allow_origins=["*"]` y headers personalizados — los browsers lo rechazan con `Authorization`.
+- ❌ Variables `os.getenv("SUPABASE_URL")` esparcidas por el código en vez de pasar por `config.py`.
+- ❌ Crear `client = create_client(...)` a nivel de módulo sin manejar la ausencia de variables — la importación falla y rompe el cold start.
+- ❌ Definir endpoints en `server.py`. La capa de transporte y la capa de rutas deben estar separadas.
+- ❌ Llamar al SDK de Supabase de forma síncrona desde un handler `async` sin `asyncio.to_thread` — bloquea el loop.
+- ❌ Usar `"rewrites"` en `vercel.json` del backend Python — rompe el routing y devuelve HTML.
+- ❌ Omitir `backend/.python-version` — Vercel usa Python 3.9 por default y falla con sintaxis moderna.

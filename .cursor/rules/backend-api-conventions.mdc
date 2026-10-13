@@ -1,0 +1,179 @@
+---
+description: Convenciones de la API FastAPI (Pydantic v2 con alias camelCase, códigos HTTP, asyncio.to_thread, logging, conversión snake_case ↔ camelCase, money en enteros)
+alwaysApply: true
+---
+
+# Backend: convenciones de la API
+
+Reglas obligatorias para escribir endpoints FastAPI consistentes con el resto del proyecto. Pareja con `backend-fastapi-stack.mdc` y `backend-supabase-auth.mdc`.
+
+## Pydantic v2: alias camelCase + populate_by_name
+
+La API habla **camelCase** con el frontend; la BD habla **snake_case**. Conversión en la capa Pydantic, no en el frontend.
+
+```python
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class PosLineIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    product_id: str = Field(alias="productId", min_length=1)
+    name: str = Field(min_length=1)
+    quantity: int = Field(ge=1)
+    unit_price: int = Field(alias="unitPrice", ge=0)
+
+
+class PosSaleCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    payment_method: str = Field(alias="paymentMethod")
+    deferred_contact: DeferredIn | None = Field(default=None, alias="deferredContact")
+    lines: list[PosLineIn] = Field(min_length=1)
+
+    @field_validator("payment_method")
+    @classmethod
+    def payment_ok(cls, v: str) -> str:
+        allowed = ("efectivo", "tarjeta", "transferencia", "pago_despues")
+        if v not in allowed:
+            raise ValueError(f"paymentMethod debe ser uno de: {allowed}")
+        return v
+```
+
+Reglas:
+
+- **`ConfigDict(populate_by_name=True)`** permite recibir tanto el alias (`productId`) como el nombre interno (`product_id`).
+- **`Field(alias="camelCase")`** define el nombre que ve el frontend; el atributo Python sigue en snake_case.
+- **Validadores en el modelo**, no en el handler: `@field_validator` para enums/normalizaciones; las restricciones simples (longitudes, ≥0, ≥1) van en `Field(ge=, min_length=, max_length=)`.
+- **Modelos de respuesta separados** (`PosSaleOut`, `PosLineOut`) declarados directamente con campos en camelCase y tipos exactos. Esto vuelve los esquemas autodocumentados en `/docs`.
+
+```python
+class PosLineOut(BaseModel):
+    productId: str
+    name: str
+    quantity: int
+    unitPrice: int
+
+
+@pos_router.post("/sales", response_model=PosSaleOut)
+async def create_sale(body: PosSaleCreate, staff: dict = Depends(require_pos_staff)):
+    ...
+```
+
+## Conversión snake_case (BD) ↔ camelCase (API)
+
+Funciones helper en el mismo módulo de routes (o en `api/<dominio>_mapping.py` si crece) para mapear filas de Supabase a `*_Out`:
+
+- Nombres claros: `_row_to_sale_out(row)`, `_lines_to_rpc_json(lines)`, `_fetch_sale_by_id(id)`.
+- **Castear explícitamente** (`int(row["total_pesos"])`, `str(row["id"])`); no asumir tipos del SDK.
+- Fechas: el SDK puede devolver `datetime` o `str`. Normalizar con `created.isoformat() if hasattr(created, "isoformat") else str(created)`.
+
+## Códigos HTTP
+
+| Situación | Status |
+| --- | --- |
+| Éxito sin cuerpo relevante | 200 / 204 según convenga |
+| Falta `Authorization` o token inválido / expirado | **401** |
+| Token válido pero rol insuficiente | **403** |
+| Validación de entrada (Pydantic, formato, enums) | **422** (FastAPI lo hace solo) |
+| Reglas de negocio violadas conocidas (datos incompletos para `pago_despues`, etc.) | **422** con `detail` claro |
+| Recurso no existe | **404** |
+| BD no configurada o caída | **503** |
+| Error genuinamente inesperado | dejar que FastAPI devuelva 500 + `logger.exception` |
+
+Evitar **200 con `{ ok: false }`**: usar el código HTTP correcto para que el frontend pueda ramificar (ver `frontend-api-client.mdc`).
+
+## `asyncio.to_thread` para SDKs síncronos
+
+El SDK `supabase-py` y `httpx.Client` síncrono **bloquean** el event loop si se llaman directo desde un handler `async`. En un runtime serverless con un solo worker, esto vuelve la API serial.
+
+Patrón:
+
+```python
+def _fetch_sale_by_id(sale_id: str):
+    return get_supabase().table("pos_sales").select("...").eq("id", sale_id).limit(1).execute()
+
+
+@pos_router.get("/sales/{sale_id}", response_model=PosSaleOut)
+async def get_sale(sale_id: str, _staff: dict = Depends(require_pos_staff)):
+    try:
+        res = await asyncio.to_thread(_fetch_sale_by_id, sale_id)
+    except Exception:
+        logger.exception("get_sale falló")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo leer la venta") from None
+
+    rows = res.data or []
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Venta no encontrada")
+    return _row_to_sale_out(rows[0])
+```
+
+Reglas:
+
+- Funciones síncronas (`_fetch_*`, `_rpc_*`) **fuera** del handler para poder pasarlas a `asyncio.to_thread`.
+- **Try/except amplio** alrededor del `to_thread` que mapea a un `HTTPException` con `detail` accionable; usar `from None` para no enmascarar la traza original en logs.
+- **No usar `httpx.AsyncClient`** mezclado con `httpx.Client` en el mismo módulo sin razón; mantener una convención por módulo.
+
+## Logging
+
+```python
+import logging
+logger = logging.getLogger(__name__)
+```
+
+- **`logger.exception(...)`** dentro de `except` (incluye traceback automáticamente). No `logger.error(str(e))` perdiendo el stack.
+- **Mensaje en español, accionable**: "create_pos_sale RPC falló", no "error".
+- No loguear PII (emails, teléfonos, tokens). Sí loguear IDs (`user_id`, `sale_id`).
+- En Vercel, los logs van a la consola; no necesitas archivos rotados.
+
+## Dinero como enteros
+
+Para sistemas de venta usados en este proyecto:
+
+- **Almacenar precios en enteros** (`total_pesos integer`, `unit_price_pesos integer`) representando la unidad mínima (pesos enteros si el catálogo es en MXN sin centavos; centavos si manejas centavos).
+- Nunca usar `float` para dinero. La aritmética en flotante introduce errores.
+- El frontend formatea para mostrar (`$ 1,250`); el backend solo guarda y suma enteros.
+
+## Escrituras transaccionales: RPC en Postgres
+
+Para operaciones que tocan varias tablas (venta + líneas), implementar **una función SQL con `security definer`** y llamarla desde Python:
+
+- Atómica por definición (todo o nada en una sola conexión).
+- Permite validaciones complejas en SQL (totales, rangos) sin roundtrips.
+- Granular: `grant execute on function ... to service_role;` y nada más.
+- Ejemplo: `create_pos_sale(p_staff_user_id, p_payment_method, p_lines jsonb, ...)` (ver `supabase_schema.sql`).
+
+Llamada desde Python con `httpx`:
+
+```python
+url = f"{url_base.rstrip('/')}/rest/v1/rpc/<fn>"
+with httpx.Client(timeout=60.0) as http:
+    r = http.post(
+        url,
+        json=payload,
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+if r.is_error:
+    msg = r.json().get("message", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text
+    raise RuntimeError(f"PostgREST {r.status_code}: {msg}")
+```
+
+(El SDK `postgrest-py` rompe con respuestas escalares de RPC; por eso preferimos `httpx` directo para esos casos.)
+
+## `from None` en re-raises
+
+Cuando relances un `HTTPException` para reemplazar un error interno, usa `raise HTTPException(...) from None` para que el frontend no vea el traceback Python en el `detail`. El traceback ya quedó en logs vía `logger.exception`.
+
+## Antipatrones
+
+- ❌ Devolver `{ "ok": false, "msg": "..." }` con 200 — siempre el código HTTP correcto.
+- ❌ Inflar Pydantic con lógica de negocio compleja; los validators son para forma del dato.
+- ❌ Llamar `client.table(...).execute()` directo en un handler `async`. Usa `asyncio.to_thread`.
+- ❌ Concatenar IDs en strings SQL; usar siempre el SDK o RPCs parametrizadas.
+- ❌ Usar `float` para precios.
+- ❌ Hacer transacciones de varias escrituras "a mano" desde Python — encapsular en una RPC SQL.

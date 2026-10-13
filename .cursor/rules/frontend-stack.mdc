@@ -1,0 +1,106 @@
+---
+description: Stack y estructura de carpetas del frontend (Vite + React 19 + TypeScript + react-router 7) para apps full-stack tipo este proyecto
+alwaysApply: true
+---
+
+# Frontend: stack y estructura
+
+Stack base obligatorio para nuevas SPAs en este monorepo. Es lo que usa este proyecto y lo que asumen las demás reglas (`frontend-styling`, `frontend-auth-routing`, `frontend-api-client`, `frontend-tooling`).
+
+## Stack
+
+- **Bundler/dev server**: `vite` ^6 con `@vitejs/plugin-react`.
+- **UI**: `react` ^19 + `react-dom` ^19, **TypeScript** estricto, JSX `react-jsx`.
+- **Estilos**: `tailwindcss` ^4 (vía `@tailwindcss/vite`) + `@mui/material` ^6 con `@emotion/react` y `@emotion/styled` (ver `frontend-styling.mdc`).
+- **Routing**: `react-router-dom` ^7.
+- **Datos / auth**: `@supabase/supabase-js` ^2 (ver `frontend-auth-routing.mdc`).
+- **Iconos**: `lucide-react` (preferido sobre fuentes de iconos).
+- **`package.json`** con `"type": "module"` y scripts:
+  - `"dev": "vite"`, `"build": "tsc -b && vite build"`, `"preview": "vite preview"`, `"lint": "eslint ."`, `"eslint": "eslint ."`.
+  - El alias duplicado `lint`/`eslint` se conserva: el hook de Husky de la raíz llama a `npm run eslint --prefix frontend`.
+
+## Estructura de carpetas dentro de `frontend/`
+
+```
+frontend/
+├── public/                 # favicon.svg, apple-touch-icon.png, icon-192.png, icon-512.png, site.webmanifest
+├── src/
+│   ├── App.tsx             # Composición de providers + rutas
+│   ├── main.tsx            # createRoot + <StrictMode><App/></StrictMode>
+│   ├── index.css           # @import "tailwindcss" + tokens CSS + @theme
+│   ├── vite-env.d.ts
+│   ├── assets/             # imágenes del bundle (png/svg/webp)
+│   ├── components/         # presentacionales y de layout (Header, Footer, ShopLayout, ErrorBoundary, RequireXAccess, etc.)
+│   ├── context/            # React Context providers (AuthContext, CartContext, etc.)
+│   ├── lib/                # clientes y helpers reutilizables (supabase.ts, muiTheme.ts, posApi.ts, tipos)
+│   ├── pages/              # vistas conectadas a rutas (Home, Login, etc.)
+│   └── styles/             # CSS extra si index.css se queda corto
+├── index.html              # lang="es", manifest, apple-touch-icon, theme-color, fuentes Google
+├── tsconfig.json           # solo "references" → app + node
+├── tsconfig.app.json       # config TS para src/
+├── tsconfig.node.json      # config TS para vite.config.ts
+├── vite.config.ts
+├── eslint.config.js        # flat config (typescript-eslint + react-hooks + react-refresh)
+├── vercel.json             # rewrites SPA → /index.html
+├── .env                    # plantilla (puede ir al repo si no trae secretos)
+└── .env.local              # valores reales locales (ignorado por git)
+```
+
+## Composición raíz
+
+`main.tsx` minimal: solo monta `<App/>` envuelto en `<StrictMode>`. Los providers viven en `App.tsx`.
+
+`App.tsx` ordena los providers de fuera hacia adentro: **tema → providers de dominio → router**. Ejemplo del proyecto:
+
+```tsx
+<ThemeProvider theme={antheaTheme}>
+  <CssBaseline />
+  <AuthProvider>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<ShopLayout />}>
+          <Route index element={<Home />} />
+          <Route path="login" element={<Login />} />
+        </Route>
+        <Route
+          path="/pos"
+          element={
+            <RequirePosAccess>
+              <ErrorBoundary title="Error en el punto de venta">
+                <POS />
+              </ErrorBoundary>
+            </RequirePosAccess>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  </AuthProvider>
+</ThemeProvider>
+```
+
+Reglas:
+
+- **`<CssBaseline/>` siempre** justo dentro de `ThemeProvider` para resetear estilos antes de Tailwind.
+- **Layouts compartidos como rutas anidadas** (`Outlet` dentro de `ShopLayout`) en vez de envolver cada página manualmente.
+- **Rutas protegidas**: envolver el `element` con `<RequireXAccess>` y, si la página puede romperse en runtime, también con `<ErrorBoundary>`.
+- **Providers de carrito / dominio** que solo aplican a una sección van dentro del layout correspondiente, no en `App.tsx` (ej.: `CartProvider` vive en `ShopLayout`).
+
+## Convenciones de archivos y nombres
+
+- Componentes y páginas en **PascalCase** (`Header.tsx`, `Catalogo.tsx`).
+- Archivos de `lib/` y utilidades en **camelCase** (`posApi.ts`, `muiTheme.ts`).
+- Hooks personalizados con prefijo `use*` (en `lib/` o cerca de su contexto, no en una carpeta `hooks/` separada salvo que crezca mucho).
+- Tipos compartidos exportados desde `lib/<dominio>Types.ts` (ej.: `posSaleTypes.ts`).
+- Idioma de UI: español (`<html lang="es">` en `index.html`).
+
+## Iconos / PWA
+
+- Mantener `public/favicon.svg`, `public/apple-touch-icon.png` (180×180), `public/icon-192.png`, `public/icon-512.png` y `public/site.webmanifest` sincronizados con la marca. Detalle en `web-app-icons.mdc`.
+- En `index.html`: `link rel="manifest"`, `link rel="apple-touch-icon"`, `meta name="theme-color"`, `meta name="apple-mobile-web-app-title"`.
+
+## Antipatrones
+
+- ❌ No usar `create-react-app`, `REACT_APP_*` ni `setupProxy.js` — esto es **Vite**.
+- ❌ No mezclar Pages Router de Next ni similares; este stack es SPA pura.
+- ❌ No poner lógica de fetch en componentes de página directamente — pasarla por `lib/` (ver `frontend-api-client.mdc`).
+- ❌ No exportar utilidades no-componente desde archivos `*.tsx` sin desactivar `react-refresh/only-export-components` para esa ruta (`src/context/**` ya está exento).

@@ -1,0 +1,133 @@
+---
+description: Método obligatorio de autenticación Supabase + API para apps full-stack (sesión, /api/me, logout, JWT)
+alwaysApply: true
+---
+
+# Método de autenticación (Supabase + FastAPI)
+
+Flujo probado para apps React/Vite + FastAPI + Supabase. Complementa `frontend-auth-routing.mdc`, `backend-supabase-auth.mdc` y `security.mdc`. **Esta regla define el ciclo de vida de sesión** — si hay conflicto en init/logout/`/api/me`, gana esta regla.
+
+## Modelo de confianza
+
+```text
+Navegador
+  ├─ Supabase Auth SDK → solo login, logout local, refresh de token (anon key)
+  └─ Bearer access_token → GET /api/me + endpoints de negocio
+
+API (service_role) → profiles.role + escrituras
+```
+
+- El frontend **nunca** lee `profiles` ni tablas de negocio con la anon key.
+- El rol y permisos UI vienen de **`GET /api/me`**; cada escritura se revalida en su endpoint.
+- El backend valida JWT con `SUPABASE_JWT_SECRET` (HS256) y cae a Auth API si el proyecto usa claves nuevas.
+
+## Archivos obligatorios
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `frontend/src/lib/supabase.ts` | Cliente singleton + `clearPersistedAuthSession()` |
+| `frontend/src/lib/authSession.ts` | `isAccessTokenExpired`, `shouldFetchMeAfterAuthEvent` |
+| `frontend/src/context/AuthContext.tsx` | Sesión, rol, `ready`, `signIn`, `signOut` |
+| `frontend/src/lib/apiClient.ts` | `apiFetch` hacia `/api/...` (proxy dev / `VITE_API_URL` prod) |
+| `backend/api/auth_jwt.py` | `require_access_token` |
+| `backend/api/router.py` | `GET /api/me` con rol y banderas derivadas |
+
+## Paso 1 — Cliente Supabase (`lib/supabase.ts`)
+
+1. Leer `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+2. Exportar `isSupabaseConfigured` y `supabase` con `persistSession: true`, `autoRefreshToken: true`.
+3. Si faltan vars, cliente placeholder con `persistSession: false` (no romper imports).
+4. Exportar **`clearPersistedAuthSession()`** que borra `sb-<project-ref>-auth-token` de `localStorage` **sin** llamar a `/auth/v1/logout`.
+
+```ts
+export function clearPersistedAuthSession(): void {
+  if (!isSupabaseConfigured) return;
+  const projectRef = new URL(url).hostname.split(".")[0];
+  localStorage.removeItem(`sb-${projectRef}-auth-token`);
+}
+```
+
+## Paso 2 — Helpers de sesión (`lib/authSession.ts`)
+
+1. **`isAccessTokenExpired(token, leewaySec = 30)`** — decodifica `exp` del JWT en cliente; no confiar en el token para autorizar escrituras, solo para decidir cuándo llamar `/api/me`.
+2. **`shouldFetchMeAfterAuthEvent(event)`** — devolver `true` solo para: `INITIAL_SESSION`, `SIGNED_IN`, `TOKEN_REFRESHED`, `USER_UPDATED`.
+
+## Paso 3 — Inicialización (`AuthContext`)
+
+1. **`AuthProvider` envuelve al router**, no al revés.
+2. Exponer: `session`, `email`, `role`, banderas (`canAccessPos`, `isAdmin`, …), **`ready`**, `signIn`, `signOut`.
+3. Si `!isSupabaseConfigured`: `session=null`, `role=null`, `ready=true`.
+4. **Solo** suscribirse a `supabase.auth.onAuthStateChange` — **no** llamar `getSession()` en paralelo (devuelve tokens caducados antes del refresh).
+5. En cada evento: `setSession(s)` → `refreshProfile(s, event)` → `setReady(true)`.
+6. Usar bandera `cancelled` + `subscription.unsubscribe()` en cleanup.
+7. `useMemo` / `useCallback` en el value del provider.
+
+## Paso 4 — Cargar perfil vía `/api/me`
+
+1. Si no hay `access_token` → `role=null`, banderas en `false`.
+2. Si el evento no está en `shouldFetchMeAfterAuthEvent` → no llamar API.
+3. Si `isAccessTokenExpired(access_token)` → **no** llamar `/api/me`; esperar `TOKEN_REFRESHED`.
+4. `GET /api/me` con `Authorization: Bearer <access_token>`.
+5. Si respuesta **401** → **`clearAuthState`**: `clearPersistedAuthSession()` + `session/role/banderas` a null/false (sesión zombie o proyecto Supabase distinto).
+6. Si `/api/me` falla por red/503 en `TOKEN_REFRESHED` → **conservar** rol y banderas previas; en `INITIAL_SESSION` / `SIGNED_IN` sí resetear.
+
+```ts
+const reset = event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "SIGNED_OUT";
+setRole((prev) => (reset ? me.role : (me.role ?? prev)));
+```
+
+## Paso 5 — Login (`signIn`)
+
+1. `supabase.auth.signInWithPassword({ email, password })`.
+2. Tras éxito, llamar `/api/me` con el nuevo `access_token`.
+3. Si `/api/me` → 401: `clearAuthState` y devolver error al usuario.
+4. Devolver `{ error, role }` para que Login redirija según permisos.
+
+## Paso 6 — Logout (`signOut`)
+
+1. **Nunca** usar `supabase.auth.signOut()` por defecto (`scope=global` o incluso `local` puede hacer POST y devolver **403** con tokens inválidos).
+2. Siempre: `clearPersistedAuthSession()` + limpiar estado React (`session`, `role`, banderas).
+3. La UI debe pasar a “sin sesión” de inmediato.
+
+## Paso 7 — Backend JWT y `/api/me`
+
+1. `require_access_token`: HS256 con `SUPABASE_JWT_SECRET` + `audience="authenticated"` + `leeway=120`; fallback `GET /auth/v1/user` con service_role.
+2. `GET /api/me`: leer `profiles.role`, devolver camelCase + banderas (`canAccessPos`, etc.).
+3. Dependencias por rol (`require_pos_staff`, `require_admin`) en endpoints de escritura.
+4. Variables backend: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` — **mismo proyecto** que `VITE_SUPABASE_URL` del frontend.
+
+## Paso 8 — Guardas de ruta (`RequireXAccess`)
+
+1. `!isSupabaseConfigured` → mensaje de configuración.
+2. `!ready` → spinner.
+3. `!session` → redirect `/login?next=...`.
+4. Sin permiso → pantalla “Sin acceso”.
+5. Rutas con fetch complejo → `ErrorBoundary` dentro del guarda.
+
+## Paso 9 — Variables y migración de proyecto Supabase
+
+Al cambiar de proyecto Supabase (p. ej. migración a otro ref):
+
+1. Actualizar **frontend** `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+2. Actualizar **backend** `.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` (Settings → API → JWT Secret).
+3. Reiniciar backend y **hard refresh** del frontend (tokens viejos en `localStorage` provocan 401 en bucle).
+4. No commitear `.env` con secretos reales; usar `.env.example` como plantilla.
+
+## Checklist antes de dar auth por terminada
+
+- [ ] Refresh de página: sin ráfagas de `GET /api/me 401` en consola.
+- [ ] Login staff → header muestra enlaces según rol.
+- [ ] Cerrar sesión → sin `POST .../logout 403`; vuelve botón LogIn.
+- [ ] `GET /api/me` con token fresco → 200 y rol correcto.
+- [ ] Endpoint protegido sin token → 401; con rol insuficiente → 403.
+- [ ] Tras migrar Supabase: usuarios deben volver a iniciar sesión.
+
+## Antipatrones (causas de bugs reales)
+
+- ❌ `getSession()` + `onAuthStateChange` llamando `/api/me` a la vez.
+- ❌ Llamar `/api/me` con access_token expirado (antes de `TOKEN_REFRESHED`).
+- ❌ `supabase.auth.signOut()` sin manejar sesiones inválidas.
+- ❌ Leer `profiles` desde el browser con anon key.
+- ❌ Mostrar “Empleado” cuando `role === null` (usar etiqueta genérica “Cerrar sesión”).
+- ❌ `SUPABASE_JWT_SECRET` desactualizado tras cambiar proyecto Supabase.
+- ❌ Confiar en `session != null` sin haber resuelto `/api/me` para permisos de UI.

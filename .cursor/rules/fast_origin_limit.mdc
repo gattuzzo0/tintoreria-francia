@@ -1,0 +1,46 @@
+---
+description: Keep R2 file bytes off Vercel Fast Origin Transfer. Presigned GET as img src; never stream or 302 into a canvas.
+globs: **/r2_storage.py,**/cors.py,**/storage.js,**/DrawingCanvas.*,**/SubmissionForm.*
+alwaysApply: false
+---
+
+# Fast Origin Transfer (R2 on Vercel)
+
+Outgoing Fast Origin Transfer is the **response body of a Vercel function**. A photo streamed from R2 through the function is billed almost entirely as outgoing. Uploads and views must not put file bytes on that response.
+
+## Uploads
+
+Presigned **PUT** straight to R2. The function returns a URL and headers, then the browser writes the object. Record the object key, not only a URL.
+
+## Views
+
+| Consumer | How |
+|---|---|
+| `<img>` with no `crossOrigin` (grid, thumb) | `302` to a presigned GET is fine. Thumb key only. Missing thumb is 404, never the full object. |
+| Canvas, `crossOrigin`, clipboard, crop | **No redirect.** `GET /photos/{id}/url` returns `{ "url" }`. Set `img.src` to that R2 URL. |
+
+Chrome blocks a CORS image that **follows a 302 onto another host**, even when R2 allows the page origin and a direct R2 load works. The Network row shows `CORS error` on the image and the photo stays blank.
+
+```text
+# bad — canvas load
+<img crossOrigin="anonymous" src="/api/photos/{id}/file" />  # 302 to R2
+
+# good
+url = (await fetch("/api/photos/{id}/url")).url
+<img crossOrigin="anonymous" src={url} />
+```
+
+## Redirect response
+
+If you still 302 (non-canvas only):
+
+- `Access-Control-Allow-Origin: *`
+- **Do not** send `Access-Control-Allow-Credentials`. Credentials on the 302 make the browser require that header from R2. R2 does not send it. DevTools marks the `/file` request failed and shows provisional headers.
+
+## Cache
+
+Do not put `Cache-Control: immutable` (or a year-long `ResponseCacheControl`) on an object URL that one caller loads **without** `Origin` and another loads **with** `crossOrigin`. The first response is stored without `Access-Control-Allow-Origin`. The second is blocked. Use `no-store` on that presigned GET. Presign expiry must outlive any cache of the URL itself (signature max 7 days).
+
+## R2 CORS
+
+Allow **GET** from the real page origins (`https://…` production, `http://localhost:5173` only if canvas runs locally). CORS does not open the bucket. A presigned URL is already readable by anyone who has it. Do not use `*` as an allowed origin. `PUT` stays on the upload rule, not on a localhost-only rule.

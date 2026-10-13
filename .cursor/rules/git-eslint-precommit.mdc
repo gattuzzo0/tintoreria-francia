@@ -1,0 +1,24 @@
+---
+description: Git pre-commit con ESLint (Husky); validar lint antes de dar por cerrado el trabajo en frontend
+alwaysApply: true
+---
+
+# Git, ESLint y commits
+
+## Comportamiento del repo
+
+- En la **raíz del monorepo** hay `package.json` con Husky (`prepare`) y script **`npm run eslint`** → ejecuta `eslint` en **`frontend/`**.
+- **`.husky/pre-commit`** corre `npm run eslint` en cada `git commit`. Si ESLint falla (exit ≠ 0), **el commit se aborta**.
+
+## Qué debe hacer el agente
+
+1. Tras editar código en **`frontend/`** (sobre todo `*.ts`, `*.tsx`, `*.js`, `*.jsx`), **ejecutar el linter** y corregir problemas antes de dar el trabajo por terminado:
+   - Desde la raíz del repo: `npm run eslint`
+   - O desde `frontend/`: `npm run eslint`
+2. **No asumir** que el código está bien sin haber pasado ESLint cuando los cambios afectan al frontend.
+3. Si se tocan **`package.json`**, scripts o **`.husky/`**, mantener coherencia: el hook debe seguir llamando al mismo flujo de ESLint del frontend.
+4. Recordar: `git commit --no-verify` omite el hook; **no recomendarlo** salvo excepción justificada.
+
+## Objetivo
+
+Misma regla que el hook local: **código que entre en commit debe pasar ESLint** en el proyecto React/Vite del frontend.

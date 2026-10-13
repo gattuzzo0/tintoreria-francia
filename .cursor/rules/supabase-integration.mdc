@@ -1,0 +1,24 @@
+---
+description: Supabase (Postgres) en backend FastAPI — env, capa DB y esquema SQL
+alwaysApply: true
+---
+
+# Supabase
+
+## Variables de entorno (backend / Vercel)
+
+- `supabase_SUPABASE_URL` — URL del proyecto Supabase (alternativa aceptada: `NEXT_PUBLIC_SUPABASE_URL` solo para lectura de URL en tooling).
+- `supabase_SUPABASE_SERVICE_ROLE_KEY` — **service role** en servidor; nunca en el bundle del frontend.
+
+Sin estas variables, las rutas de datos deben responder **503** o equivalente (“base de datos no configurada”).
+
+## Patrones de código
+
+- Cliente singleton: `create_client(url, key)` desde el paquete `supabase`, inicializado una vez por proceso.
+- **Tablas en Postgres**: columnas en **snake_case**; la API REST/JSON puede usar **camelCase** — convertir en una capa dedicada (p. ej. `*_to_db` / `*_from_db`) para no filtrar detalles de esquema al frontend.
+- Llamadas **síncronas** del SDK: envolver en `asyncio.to_thread(...)` dentro de handlers FastAPI async.
+- Esquema versionado en un archivo SQL en `backend/` (p. ej. `supabase_schema.sql`) y aplicado en el **SQL Editor** de Supabase; documentar en README que las tablas no se “auto-crean” solo con código.
+
+## Seguridad
+
+- Políticas RLS y permisos en Supabase según el modelo; el backend con service role bypassa RLS — validar auth y roles en la API antes de operaciones sensibles.

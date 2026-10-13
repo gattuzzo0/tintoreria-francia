@@ -1,0 +1,117 @@
+---
+description: Auth con Supabase, AuthContext, cliente Supabase singleton, rutas protegidas por rol y ErrorBoundary en el frontend
+alwaysApply: true
+---
+
+# Frontend: auth, contexto y rutas protegidas
+
+Patrón obligatorio para autenticación y autorización en el cliente. Pareja con `backend-supabase-auth.mdc`.
+
+## Cliente Supabase singleton — `src/lib/supabase.ts`
+
+- Leer `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` desde `import.meta.env`.
+- Exportar **bandera `isSupabaseConfigured`** y **cliente `supabase`**. Si faltan variables, devolver un cliente *placeholder* con `persistSession: false` para no romper la importación; la app debe usar `isSupabaseConfigured` antes de hacer login o leer datos.
+
+```ts
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+const url = (import.meta.env.VITE_SUPABASE_URL ?? "").trim();
+const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? "").trim();
+
+export const isSupabaseConfigured = Boolean(url && anonKey);
+
+export const supabase: SupabaseClient = isSupabaseConfigured
+  ? createClient(url, anonKey, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    })
+  : createClient(
+      "https://placeholder-not-configured.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder-not-configured",
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    );
+```
+
+Reglas:
+
+- **Nunca** poner `service_role` ni JWT secret en el frontend; solo la **anon key** (es pública por diseño en Supabase y debe ir acompañada de RLS — ver `supabase-integration.mdc`).
+- Un único módulo `lib/supabase.ts`. No instanciar `createClient` en otros archivos.
+
+## `AuthContext` — `src/context/AuthContext.tsx`
+
+Provider que centraliza sesión, rol y operaciones de auth. Responsabilidades:
+
+- Guardar `session: Session | null` y suscribirse a `onAuthStateChange` para reactividad.
+- Tras cada cambio de sesión, **leer el rol** desde `public.profiles` (`select role where id = user.id`) y exponerlo como `role: 'admin' | 'empleado' | null` (ajustar a los roles del producto).
+- Exponer banderas derivadas (`canAccessPos`, `canEditCatalog`, etc.) en vez de obligar a cada componente a comparar strings.
+- Exponer **`ready: boolean`** que pasa a `true` cuando la sesión inicial ya se resolvió. Hasta entonces, los guardas muestran loader.
+- Funciones: `signIn(email, password)` y `signOut()`. `signIn` debe devolver `{ error, role }` para que la página de login pueda decidir a dónde redirigir.
+
+Esqueleto recomendado:
+
+```tsx
+type StaffRole = "admin" | "empleado";
+type AuthContextValue = {
+  session: Session | null;
+  email: string | null;
+  role: StaffRole | null;
+  canAccessPos: boolean;
+  ready: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: string | null; role: StaffRole | null }>;
+  signOut: () => Promise<void>;
+};
+```
+
+Detalles importantes:
+
+- Si **`!isSupabaseConfigured`**: poner `session=null`, `role=null`, `ready=true`. La app sigue navegable; los guardas muestran un mensaje pidiendo configurar `.env`.
+- Cancelación: usar bandera `cancelled` dentro del `useEffect` y `subscription.unsubscribe()` al limpiar. No hacer `setState` después de unmount.
+- `useMemo` para el `value` del provider y `useCallback` para `signIn` / `signOut`. Evita re-renders en cascada.
+- Hook `useAuth()` que lanza error si se usa fuera del provider.
+- **`AuthProvider` debe envolver al router** (`<AuthProvider><BrowserRouter>...</BrowserRouter></AuthProvider>`) para que los guardas dentro de las rutas puedan llamar `useAuth()`.
+
+## Guardas de ruta — `RequireXAccess`
+
+Un componente por audiencia (`RequirePosAccess`, `RequireAdminAccess`, etc.). Lógica:
+
+1. Si `!isSupabaseConfigured`: mensaje claro de "falta configurar VITE_SUPABASE_*" y botón a inicio.
+2. Si `!ready`: spinner centrado (MUI `<CircularProgress />` con `aria-label`).
+3. Si no hay sesión: `<Navigate to={"/login?next=" + encodeURIComponent(pathname + search)} replace />`.
+4. Si la sesión existe pero no tiene el rol requerido: pantalla "Sin acceso a X" con CTA a inicio.
+5. Si todo OK: renderizar `children`.
+
+El parámetro `next` permite que la página de login redirija de vuelta tras autenticarse.
+
+## `ErrorBoundary` para rutas con riesgo
+
+Componente de clase con `getDerivedStateFromError` + `componentDidCatch` que muestre el `error.message` y `error.stack` legibles, y registre con `console.error("[ErrorBoundary]", error, info.componentStack)`. Envolver con él las rutas que hacen fetch/POS/operaciones complejas, dentro del guarda:
+
+```tsx
+<RequirePosAccess>
+  <ErrorBoundary title="Error en el punto de venta">
+    <POS />
+  </ErrorBoundary>
+</RequirePosAccess>
+```
+
+No envolver `App` entero con un solo ErrorBoundary genérico: pierde contexto y rompe los layouts.
+
+## Página de login
+
+- Recoger `next` de `useSearchParams()`.
+- Llamar `signIn(email, password)`; si `error`, mostrar `Alert` con mensaje. Si `error === null`:
+  - Si `role` da acceso al destino solicitado, `navigate(next ?? "/")`.
+  - Si no, redirigir a inicio o mostrar mensaje.
+- Si la app está mal configurada (`!isSupabaseConfigured`), deshabilitar el formulario y explicar qué falta.
+
+## Convenciones generales
+
+- Toda lectura/escritura sensible **valida en el backend** (FastAPI con service_role). El frontend solo decide qué UI mostrar; nunca confía en su propio rol para acciones de escritura.
+- Pasar el `access_token` a la API como `Authorization: Bearer <token>` (ver `frontend-api-client.mdc`).
+- No guardar `access_token` en `localStorage` manualmente: usar la persistencia del cliente Supabase (`persistSession: true`).
+
+## Antipatrones
+
+- ❌ Provider de auth dentro del router (`<BrowserRouter><AuthProvider>...`): los guardas no podrán leer el contexto.
+- ❌ Llamar a `createClient` en cada componente que necesite Supabase.
+- ❌ Decidir permisos basándose solo en `session != null`. Siempre considerar el rol cargado desde `profiles`.
+- ❌ Olvidar el estado `ready`: provoca redirecciones falsas a `/login` mientras Supabase aún resuelve la sesión inicial.

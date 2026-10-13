@@ -1,0 +1,127 @@
+---
+description: Cliente HTTP del frontend hacia la API FastAPI (apiUrl helper, fetch tipado, errores HTTP, proxy de Vite y VITE_BACKEND_URL)
+alwaysApply: true
+---
+
+# Frontend: cliente API hacia FastAPI
+
+Cómo hablar con la API desde el navegador. Funciona igual en local (proxy de Vite) y en producción (URL pública del backend) sin cambiar el código de los componentes.
+
+## Variable de entorno
+
+- **`VITE_BACKEND_URL`**: URL pública del backend FastAPI en producción/preview (p. ej. `https://mi-api.vercel.app`). Sin barra final.
+- En **desarrollo local** se deja **vacía** y Vite hace proxy de `/api` → `http://127.0.0.1:8000` (ver `vite.config.ts` en `frontend-tooling.mdc`).
+- En **producción** debe estar definida en el dashboard de Vercel del frontend, **tanto Preview como Production**, y requerir nuevo build para tomar efecto (Vite la inyecta en build, no en runtime).
+
+## Helper `apiUrl` — `src/lib/<dominio>Api.ts`
+
+Cada módulo de API (p. ej. `posApi.ts`, `catalogApi.ts`) define su propio `apiUrl` local; o se centraliza en `lib/apiUrl.ts` si hay muchos. Comportamiento:
+
+- Si `VITE_BACKEND_URL` está definida: prepende esa base.
+- Si no: devuelve la ruta tal cual (`"/api/..."`), confiando en el proxy local de Vite o en el mismo origen.
+
+```ts
+function apiUrl(path: string): string {
+  const base = (import.meta.env.VITE_BACKEND_URL ?? "").replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return base ? `${base}${p}` : p;
+}
+```
+
+Reglas:
+
+- Las rutas siempre empiezan con `/api/...` (ese es el prefijo del router en FastAPI).
+- No hardcodear `http://localhost:8000` en componentes; usar `apiUrl()`.
+
+## Errores HTTP tipados
+
+Definir una clase de error específica del módulo para que las páginas puedan distinguir errores de red, validación (422), auth (401/403) y de servidor (500/502/503/504):
+
+```ts
+export class PosApiHttpError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "PosApiHttpError";
+  }
+}
+```
+
+Patrón de manejo:
+
+- **Errores de red** (fetch lanza `TypeError`): traducir a un `Error` con mensaje accionable + pista (`backendHint()`).
+- **Respuestas no-OK**: leer `response.text()`, intentar `JSON.parse` para extraer `detail` (FastAPI). Si `detail` es array de errores Pydantic, juntar `msg` con `; `.
+- **5xx / gateway**: mensaje específico que sugiera revisar `VITE_BACKEND_URL` o que el backend esté arriba.
+- **500 con `Internal Server Error` genérico**: reescribir con la pista para que el usuario sepa qué intentar.
+
+```ts
+async function handleJsonError(res: Response): Promise<never> {
+  const text = await res.text();
+  let msg = res.statusText || "Error de red";
+  try {
+    const j = JSON.parse(text) as { detail?: unknown };
+    if (j?.detail !== undefined) msg = parseDetail(j.detail);
+  } catch {
+    if (text.trim()) msg = text.trim().slice(0, 280);
+  }
+  throw new PosApiHttpError(msg, res.status);
+}
+```
+
+## Funciones de fetch
+
+Una función por endpoint, **tipadas**, recibiendo el `accessToken` por parámetro (no leerlo del `localStorage` directamente):
+
+```ts
+export async function fetchPosSales(accessToken: string): Promise<SaleRecord[]> {
+  const res = await fetch(apiUrl("/api/pos/sales"), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) await handleJsonError(res);
+  return (await res.json()) as SaleRecord[];
+}
+
+export async function createPosSale(
+  accessToken: string,
+  body: CreatePosSaleBody,
+): Promise<SaleRecord> {
+  const res = await fetch(apiUrl("/api/pos/sales"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await handleJsonError(res);
+  return (await res.json()) as SaleRecord;
+}
+```
+
+Reglas:
+
+- **Token explícito**: la página obtiene `session?.access_token` desde `useAuth()` y se lo pasa a la función. No magias globales.
+- **Tipos del request y del response** declarados en el mismo archivo o en `lib/<dominio>Types.ts`. Mantener nombres en **camelCase** del lado JS aunque la BD use snake_case (ver `backend-api-conventions.mdc`).
+- **No envolver `fetch` en una librería pesada** (axios, react-query) salvo necesidad real; si se introduce react-query, se envuelve `apiUrl + fetch + handleJsonError` dentro de los `queryFn` y se mantiene la misma capa de errores.
+
+## Pista de configuración (UX)
+
+Helper opcional que devuelve un texto explicando qué intentar cuando hay 502/503/504 o caída total:
+
+```ts
+function backendHint(): string {
+  const hasRemote = Boolean((import.meta.env.VITE_BACKEND_URL ?? "").trim());
+  if (import.meta.env.DEV && !hasRemote) {
+    return " En desarrollo, en backend/ ejecuta: uvicorn server:app --reload --host 127.0.0.1 --port 8000";
+  }
+  if (!hasRemote) return " Define VITE_BACKEND_URL con la URL pública del API.";
+  return " Revisa que VITE_BACKEND_URL sea correcta y que el API esté en línea.";
+}
+```
+
+## Antipatrones
+
+- ❌ Hardcodear `http://localhost:8000/api/...` en componentes — usar `apiUrl()`.
+- ❌ Leer el `access_token` desde `localStorage` directamente — pasarlo desde el contexto de auth.
+- ❌ Capturar el error y devolver `null` silenciosamente — siempre dejar que la UI lo muestre con su mensaje.
+- ❌ Mezclar `process.env.X` con `import.meta.env.VITE_X`. En Vite, **siempre `import.meta.env.VITE_*`**.
+- ❌ Definir `VITE_BACKEND_URL` en runtime esperando que cambie sin rebuild — no funciona, requiere nuevo build/redeploy.

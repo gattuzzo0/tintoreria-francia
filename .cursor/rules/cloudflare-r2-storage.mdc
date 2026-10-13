@@ -1,0 +1,34 @@
+---
+description: Cloudflare R2 (S3-compatible) para archivos — env, boto3 y uso desde FastAPI
+alwaysApply: true
+---
+
+# Cloudflare R2
+
+## Variables de entorno
+
+Todas obligatorias para subir/servir/borrar archivos en producción serverless:
+
+- `R2_ACCOUNT_ID`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_BUCKET_NAME`
+
+## Cliente S3 (boto3)
+
+- `endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"`
+- `region_name="auto"`
+- `Config(signature_version="s3v4")`
+- Dependencia: `boto3` (+ `botocore`).
+
+## Buenas prácticas en API
+
+- Guardar en base de datos el **object key** (p. ej. `proyecto/sesion/archivo.jpg`), no solo URLs opacas; permite borrar y listar.
+- En **GET** de archivos, si el frontend está en otro origen, **proxificar** la respuesta desde la API con headers CORS adecuados (o configurar CORS en R2 si se usa URL pública directa).
+- Al **eliminar**, si el valor guardado es una URL `http(s)://` heredada de otro proveedor, no intentar borrarla como key de R2.
+- **Límites Vercel**: cuerpo de request ~4.5MB; subidas grandes en una sola request pueden fallar — lotes pequeños o subida archivo por archivo.
+- En Vercel (`VERCEL=1`), el filesystem del proyecto es de solo lectura; usar `/tmp` solo como buffer temporal y persistir siempre en R2 para archivos que deban servirse después.
+
+## Utilidad de prueba
+
+- Script opcional `backend/test_r2_upload.py` que lee `.env` desde `backend/` y sube un archivo de prueba para validar credenciales.

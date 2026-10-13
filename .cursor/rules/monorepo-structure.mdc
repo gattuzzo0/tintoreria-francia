@@ -1,0 +1,30 @@
+---
+description: Estructura de monorepo (frontend Vite + backend FastAPI + README en raíz) al crear apps full-stack tipo este proyecto
+alwaysApply: true
+---
+
+# Estructura de proyecto
+
+Al crear una app full-stack nueva (p. ej. "app para vender pizzas"), usa este layout en la **raíz del repositorio**:
+
+```
+<repo>/
+├── frontend/          # SPA React + Vite + TypeScript (src/{components,pages,context,lib,assets,styles}, public/)
+├── backend/           # API FastAPI (server.py, api/, requirements.txt o pyproject.toml)
+├── README.md          # Documentación principal del producto, stack y cómo correr local/deploy
+├── package.json       # Solo metadatos del monorepo + Husky + script eslint que delega a frontend
+├── vercel.json        # Config Vercel raíz para el deploy del frontend con root del monorepo
+└── .gitignore
+```
+
+## Convenciones
+
+- **No mezclar** el código de la SPA con el de la API en la misma carpeta; `frontend/` y `backend/` son proyectos separados con sus propios `package.json` / dependencias Python.
+- **Frontend (Vite)**: variables de entorno con prefijo **`VITE_*`** (p. ej. `VITE_BACKEND_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`). Se acceden con `import.meta.env.VITE_*`. Si la app se sirve bajo subruta, configurar `base` en `vite.config.ts`.
+- **Backend**: `.env` en `backend/` cargado con `python-dotenv` desde la carpeta del servidor; rutas API bajo prefijo `/api`.
+- **Proxy local**: bloque `server.proxy` en `frontend/vite.config.ts` enrutando `/api` → `http://127.0.0.1:8000` durante desarrollo (no hace falta `setupProxy.js`, eso es de CRA).
+- **README raíz**: debe listar stack, estructura de carpetas, variables de entorno necesarias y comandos para backend + frontend.
+
+## Notas
+
+- Si en algún momento ves referencias a `REACT_APP_*` o `setupProxy.js`, son del stack antiguo de Create React App (CRA). Este monorepo usa **Vite**, así que la convención correcta es `VITE_*` y proxy en `vite.config.ts`.

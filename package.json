@@ -1,0 +1,11 @@
+{
+  "name": "tintoreria-francia",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "eslint": "npm run eslint --prefix frontend"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

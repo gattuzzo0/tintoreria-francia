@@ -1,0 +1,199 @@
+---
+description: Tooling del frontend (vite.config, eslint flat config, tsconfig split, scripts) para apps Vite + React 19 + TypeScript
+alwaysApply: true
+---
+
+# Frontend: tooling (Vite + ESLint + TypeScript)
+
+Configuración estándar del proyecto. Pareja con `git-eslint-precommit.mdc` (Husky de la raíz llama `npm run eslint --prefix frontend`).
+
+## `frontend/vite.config.ts`
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  server: {
+    port: 5173,
+    /** Si 5173 está ocupado, fallar con mensaje claro en vez de cambiar a 5174 silenciosamente. */
+    strictPort: true,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: { port: 4173, strictPort: true },
+  appType: "spa",
+});
+```
+
+Reglas:
+
+- **`@tailwindcss/vite`** activa Tailwind v4 sin `tailwind.config.js`.
+- **`server.proxy["/api"]`** evita problemas de CORS en desarrollo: el frontend habla con su propio origen y Vite reenvía al backend.
+- **`strictPort: true`** en dev y preview: si los puertos están ocupados, mejor fallar que mover los servicios sin avisar.
+- **`appType: "spa"`** evita comportamientos raros del fallback de Vite.
+- Si la app se sirve bajo subruta en producción (p. ej. `/tienda/`), añadir `base: "/tienda/"` en `defineConfig`.
+
+## `frontend/tsconfig.json`
+
+Solo agrupa referencias; no compila por sí mismo.
+
+```json
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+```
+
+## `frontend/tsconfig.app.json`
+
+Config de TypeScript estricto para el código de `src/`:
+
+```json
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src"]
+}
+```
+
+Reglas:
+
+- **`strict: true`** y `noUnused*`: el build (`tsc -b && vite build`) es la red de seguridad de tipos. Si un `noUnusedLocals` rompe, **arreglar el código**, no relajar la regla.
+- **`verbatimModuleSyntax: true`** + `import type { X } from "..."` para tipos. Esto evita importaciones runtime accidentales.
+- **`allowImportingTsExtensions: true`** + `noEmit: true` permiten escribir `import "./foo.ts"` cuando hace falta y dejan que Vite haga el bundling.
+- **`jsx: "react-jsx"`** (nuevo JSX transform; no hace falta `import React`).
+
+## `frontend/tsconfig.node.json`
+
+Para `vite.config.ts` y otros scripts de build. Usar `module: "ESNext"`, `moduleResolution: "bundler"`, `composite: true`. Mantenerlo escueto.
+
+## `frontend/eslint.config.js` (flat config)
+
+```js
+import js from "@eslint/js";
+import globals from "globals";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  { ignores: ["dist"] },
+  {
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    files: ["**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+    },
+    plugins: {
+      "react-hooks": reactHooks,
+      "react-refresh": reactRefresh,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+    },
+  },
+  {
+    files: ["src/context/**/*.{ts,tsx}"],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
+);
+```
+
+Reglas:
+
+- **Flat config** (ESLint 9+); no usar `.eslintrc.*`.
+- **`react-hooks` recommended**: detecta dependencias mal declaradas en `useEffect`/`useMemo`. No silenciar con `// eslint-disable-next-line` salvo justificación documentada.
+- **`react-refresh/only-export-components`** en `warn` con `allowConstantExport: true`: los componentes deben ser los únicos *named exports* de un `*.tsx` para que HMR funcione. La excepción es **`src/context/**`** donde es legítimo exportar el provider, el hook y los tipos juntos.
+- Si necesitas exportar utilidades junto a un componente, muévelas a `src/lib/` (en `.ts`).
+
+## `package.json` scripts
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "eslint": "eslint .",
+    "preview": "vite preview"
+  }
+}
+```
+
+Reglas:
+
+- **`build` corre `tsc -b` antes de `vite build`** para que errores de tipos rompan el deploy. No quitar el `tsc -b` por "ahorrar tiempo".
+- **`lint` y `eslint`** son alias del mismo comando (Husky de la raíz invoca el segundo).
+
+## `package.json` raíz del monorepo
+
+```json
+{
+  "name": "<repo>",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "eslint": "npm run eslint --prefix frontend"
+  },
+  "devDependencies": { "husky": "^9.1.7" }
+}
+```
+
+`.husky/pre-commit`:
+
+```sh
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+npm run eslint
+```
+
+## `.gitignore` (frontend mínimo)
+
+```
+node_modules
+dist
+.env.local
+.vercel
+```
+
+`.env` puede commitearse si solo trae plantilla / valores no secretos (anon key de Supabase es pública por diseño cuando va con RLS); secretos van a `.env.local`.
+
+## Antipatrones
+
+- ❌ Mezclar CRA y Vite (`react-scripts`, `setupProxy.js`, `REACT_APP_*`).
+- ❌ Apagar `strict` o `noUnusedLocals` para pasar el build.
+- ❌ Eslint en formato legacy `.eslintrc.json` con plugins manuales — usar flat config.
+- ❌ Saltarse el hook con `git commit --no-verify` salvo emergencia documentada.

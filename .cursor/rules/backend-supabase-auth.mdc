@@ -1,0 +1,189 @@
+---
+description: Validación de JWT de Supabase en FastAPI con HTTPBearer, fallback a /auth/v1/user, dependencias de rol y uso de service_role
+alwaysApply: true
+---
+
+# Backend: auth de Supabase en FastAPI
+
+Cómo validar el `access_token` que llega del frontend y cómo gatear endpoints por rol. Pareja con `frontend-auth-routing.mdc` y `supabase-integration.mdc`.
+
+## Estrategia de verificación de JWT
+
+Supabase puede firmar el token con dos esquemas:
+
+1. **Legacy HS256** con un *JWT secret* del proyecto.
+2. **JWT Signing Keys nuevos** (RS256/EdDSA) sin secreto compartido.
+
+La función `decode_supabase_access_token` debe **probar HS256 primero** (rápido, offline) y **caer a la Auth API** (`GET /auth/v1/user`) si no funciona. Así el código sirve para ambos esquemas sin cambios.
+
+## `backend/api/auth_jwt.py`
+
+```python
+import asyncio
+
+import httpx
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from api.config import (
+    get_supabase_jwt_secret,
+    get_supabase_service_role_key,
+    get_supabase_url,
+)
+
+security = HTTPBearer(auto_error=False)
+
+
+def _decode_via_supabase_user_api(token: str) -> dict:
+    """Valida el token llamando a Supabase /auth/v1/user. Sirve para JWTs nuevos (RS256, etc.)."""
+    url_base = get_supabase_url()
+    key = get_supabase_service_role_key()
+    if not url_base or not key:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Faltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY para validar la sesión",
+        )
+    url = f"{url_base.rstrip('/')}/auth/v1/user"
+    try:
+        r = httpx.get(
+            url,
+            headers={"Authorization": f"Bearer {token}", "apikey": key},
+            timeout=15.0,
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"No se pudo contactar a Supabase Auth: {e!s}",
+        ) from e
+
+    if r.status_code != 200:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
+
+    u = r.json()
+    uid = u.get("id")
+    if not uid:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
+    return {"sub": str(uid), "email": u.get("email")}
+
+
+def decode_supabase_access_token(token: str) -> dict:
+    secret = get_supabase_jwt_secret()
+    if secret:
+        try:
+            return jwt.decode(
+                token,
+                secret,
+                algorithms=["HS256"],
+                audience="authenticated",
+                leeway=120,
+            )
+        except jwt.PyJWTError:
+            pass  # Cae a la Auth API si el JWT no es HS256 con este secreto.
+    return _decode_via_supabase_user_api(token)
+
+
+async def require_access_token(
+    creds: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict:
+    if not creds or creds.scheme.lower() != "bearer":
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            detail="Se requiere Authorization: Bearer <access_token>",
+        )
+    return await asyncio.to_thread(decode_supabase_access_token, creds.credentials)
+```
+
+Reglas:
+
+- **`HTTPBearer(auto_error=False)`**: queremos personalizar el mensaje de 401 en español; si dejas `auto_error=True`, FastAPI devuelve un mensaje genérico.
+- **`leeway=120` y `audience="authenticated"`** evitan rechazos por desfases de reloj y validan que el token sea de un usuario logueado (no anon).
+- **No cachear** los claims globalmente; cada request valida su token (los tokens expiran y se rotan).
+- **`asyncio.to_thread`**: tanto `jwt.decode` como `httpx.get` síncrono son bloqueantes; envuélvelos para no taponar el event loop.
+- **503 cuando falta config**, **401 cuando el token es malo o falta**. Nunca 500 silencioso.
+
+## Dependencias de rol — `backend/api/deps.py`
+
+Una dependencia por audiencia (`require_pos_staff`, `require_admin`, etc.). Lee `profiles` y filtra por rol. Patrón:
+
+```python
+import asyncio, logging
+from fastapi import Depends, HTTPException, status
+
+from api.auth_jwt import require_access_token
+from api.config import is_database_configured
+from api.supabase_client import get_supabase
+
+logger = logging.getLogger(__name__)
+
+
+def _profile_row_for_user(user_id: str):
+    return (
+        get_supabase()
+        .table("profiles")
+        .select("id, role")
+        .eq("id", user_id)
+        .limit(1)
+        .execute()
+    )
+
+
+async def require_pos_staff(claims: dict = Depends(require_access_token)) -> dict:
+    """Usuario con rol admin o empleado."""
+    if not is_database_configured():
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Base de datos no configurada")
+
+    user_id = claims.get("sub")
+    if not user_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Token sin identificador de usuario")
+
+    try:
+        res = await asyncio.to_thread(_profile_row_for_user, user_id)
+    except Exception:
+        logger.exception("require_pos_staff: error leyendo profiles")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Error al leer el perfil",
+        ) from None
+
+    rows = res.data or []
+    role = (rows[0].get("role") if rows else None)
+    if role not in ("admin", "empleado"):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de administrador o empleado",
+        )
+
+    return {"user_id": user_id, "role": role, "email": claims.get("email")}
+```
+
+Reglas:
+
+- **Encadenar `Depends`**: `require_pos_staff` depende de `require_access_token`. FastAPI los resuelve en orden.
+- **401 si falta token o `sub`** ; **403 si el token es válido pero el rol no autoriza** ; **503 si la BD falla**.
+- Devolver un **dict pequeño** con lo necesario (`user_id`, `role`, `email`); no devolver `claims` enteros porque expone más de lo que el endpoint debe usar.
+- Cada endpoint protegido recibe la dependencia: `async def create_sale(body: ..., staff: dict = Depends(require_pos_staff)):`.
+
+## Uso del cliente service_role
+
+- El cliente que devuelve `get_supabase()` usa **service_role** y por tanto **bypassa RLS**. Solo invocarlo después de pasar la dependencia de rol; nunca exponer un endpoint sin guarda que use el service_role contra datos sensibles.
+- Para llamadas a **RPC escalares** (PostgREST que devuelve un UUID/string), preferir `httpx` directo apuntando a `/rest/v1/rpc/<fn>` con headers `apikey` + `Authorization: Bearer <service_role>`. El SDK `postgrest-py` puede romperse con respuestas escalares (ver `pos_routes.py`).
+- Para escrituras transaccionales, **usar funciones SQL con `security definer`** (ver ejemplo `create_pos_sale` en `supabase_schema.sql`) en vez de hacer múltiples requests desde Python.
+
+## Lectura del rol en `/api/me`
+
+`/api/me` lee `profiles.role` y devuelve banderas derivadas (`canAccessPos`, etc.) que el frontend usa para decidir UI. Es el **único** lugar donde el frontend confía en el rol; las **acciones** siempre revalidan en su endpoint con la dependencia de rol correspondiente.
+
+## Variables de entorno que usa este flujo
+
+- `SUPABASE_URL` (o aliases `supabase_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`).
+- `SUPABASE_SERVICE_ROLE_KEY` (o `supabase_SUPABASE_SERVICE_ROLE_KEY`).
+- `SUPABASE_JWT_SECRET` (o `JWT_SECRET`) — opcional pero recomendado: si está, evita un round-trip a Auth API en cada request.
+
+## Antipatrones
+
+- ❌ Decodificar el JWT solo con `jwt.decode` y devolver 500 si falla — usar el fallback a Auth API y devolver 401 explícito.
+- ❌ Confiar en el `role` del JWT mismo (a veces es `authenticated` literal, no el rol del producto). El rol del producto vive en `public.profiles`.
+- ❌ Pasar el `service_role` al frontend o exponerlo en logs/respuestas.
+- ❌ Hacer `requests` síncrono dentro de un handler `async` sin `asyncio.to_thread`.
+- ❌ Saltarse la dependencia de rol "porque ya está atrás de auth": un usuario autenticado sin rol puede hacer cualquier llamada si no la gateas.

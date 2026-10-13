@@ -1,0 +1,137 @@
+---
+description: Sistema de estilos del frontend (Tailwind v4 + MUI 6 sincronizados por tokens CSS, tipografía Didone + Sans)
+alwaysApply: true
+---
+
+# Frontend: estilos (Tailwind v4 + MUI 6)
+
+Convenciones del sistema visual de este proyecto. Pensadas para que **MUI y Tailwind compartan los mismos tokens de marca** y se puedan mezclar componentes de ambos sin choques.
+
+## Principios
+
+1. **Una sola fuente de verdad para los colores**: variables CSS en `:root` dentro de `src/index.css`. Tanto Tailwind v4 (vía `@theme`) como MUI (vía `createTheme`) leen esos mismos valores.
+2. **MUI maneja componentes complejos** (formularios, dialogs, drawers, snackbars, tablas, theming dinámico).
+3. **Tailwind maneja layout y utilidades** (flex/grid, espaciado, tipografía, estados hover/focus, responsive).
+4. Mezclar libremente: usar `className="..."` de Tailwind sobre componentes MUI cuando convenga.
+
+## `src/index.css`
+
+Plantilla mínima al arrancar un proyecto nuevo. Ajustar la paleta a la marca pero **mantener los nombres de tokens** (`--background`, `--foreground`, `--primary`, `--primary-foreground`, `--secondary`, `--accent`, `--card`, `--muted`, `--border`, `--muted-foreground`, `--radius`, `--shadow-soft`).
+
+```css
+@import "tailwindcss";
+
+:root {
+  --font-sans: "Montserrat", system-ui, sans-serif;
+  --font-serif: "Bodoni Moda", "Didot", Georgia, serif;
+
+  --background: #fdf5e6;
+  --foreground: #4a4540;
+  --primary: #9d737c;
+  --primary-foreground: #fff9eb;
+  --secondary: #efe8dc;
+  --accent: #c9a8a8;
+  --card: #fff9eb;
+  --muted: #f5efe3;
+  --border: #e5e0da;
+  --muted-foreground: #8e8d8c;
+  --radius: 0.5rem;
+  --shadow-soft:
+    0 1px 2px rgba(74, 69, 64, 0.06),
+    0 8px 24px rgba(74, 69, 64, 0.06);
+}
+
+@theme {
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-muted-foreground: var(--muted-foreground);
+  --radius-lg: var(--radius);
+  --shadow-soft: var(--shadow-soft);
+}
+
+html {
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
+}
+body { margin: 0; min-height: 100vh; background: var(--background); }
+#root { min-height: 100dvh; }
+```
+
+Reglas:
+
+- **Tailwind v4 con `@theme`**: cada token CSS se expone como utilidad (`bg-background`, `text-foreground`, `border-border`, `bg-primary text-primary-foreground`, etc.). Esto sustituye al `tailwind.config.js` clásico de v3.
+- **Importar Tailwind con `@import "tailwindcss";`** al inicio del archivo (Tailwind v4 ya no usa `@tailwind base/components/utilities`).
+- **Clases utilitarias específicas de marca** (logos, wordmarks, taglines, decoraciones) viven al final de `index.css` con prefijos `.font-*` o un namespace de la marca; no inflar `@theme` con detalles únicos.
+
+## `src/lib/muiTheme.ts`
+
+Espejo del CSS para MUI, en `lib/muiTheme.ts`. Mantener los hex iguales a los tokens; si cambias la paleta, actualiza ambos archivos.
+
+```ts
+import { createTheme } from "@mui/material/styles";
+
+export const appTheme = createTheme({
+  palette: {
+    mode: "light",
+    primary: { main: "#9d737c", contrastText: "#fff9eb" },
+    secondary: { main: "#efe8dc" },
+    background: { default: "#fdf5e6", paper: "#fff9eb" },
+    text: { primary: "#4a4540", secondary: "#7a726c" },
+    divider: "#e5e0da",
+  },
+  shape: { borderRadius: 8 },
+  typography: {
+    fontFamily: '"Montserrat", sans-serif',
+    h1: { fontFamily: '"Bodoni Moda", "Didot", serif', fontWeight: 600 },
+    h2: { fontFamily: '"Bodoni Moda", "Didot", serif', fontWeight: 600 },
+    h3: { fontFamily: '"Bodoni Moda", "Didot", serif', fontWeight: 600 },
+    h4: { fontFamily: '"Bodoni Moda", "Didot", serif', fontWeight: 600 },
+    h5: { fontFamily: '"Bodoni Moda", "Didot", serif', fontWeight: 600 },
+    h6: { fontFamily: '"Bodoni Moda", "Didot", serif', fontWeight: 600 },
+    button: { textTransform: "none", fontWeight: 600 },
+  },
+  components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundImage: "none",
+          boxShadow:
+            "0 1px 2px rgba(74, 69, 64, 0.06), 0 8px 24px rgba(74, 69, 64, 0.06)",
+        },
+      },
+    },
+    MuiButton: { defaultProps: { disableElevation: true } },
+  },
+});
+```
+
+## Tipografía
+
+- **Pareo por defecto**: serif Didone (`Bodoni Moda` / fallback `Didot`, `Bodoni MT`, `Georgia`) para encabezados y wordmark; sans humanista (`Montserrat`) para cuerpo y UI.
+- **Cargar fuentes en `index.html`** con `preconnect` a Google Fonts y un único `<link href="https://fonts.googleapis.com/css2?...">` con los pesos necesarios. No importar fuentes con `@import` en CSS (peor performance).
+- Pesos típicos a pedir: Montserrat 300/400/500/600, Bodoni Moda 400/500/600/700.
+- `textTransform: "none"` en botones MUI por defecto: nada de UPPERCASE forzado.
+
+## Mezclar MUI + Tailwind
+
+- Para layout (flex, grid, gap, padding, anchos): **Tailwind**.
+- Para componentes (Button, Drawer, TextField, Snackbar, CircularProgress, Typography para textos largos): **MUI**.
+- Si necesitas color de marca dentro de MUI, usa `color="primary"` en vez de hardcodear hex; el theme ya lo tiene.
+- Si necesitas color de marca en Tailwind, usa las utilidades del `@theme` (`bg-primary`, `text-primary-foreground`, `border-border`, `bg-card`, etc.).
+
+## Antipatrones
+
+- ❌ No usar `tailwind.config.js` viejo de v3 con este stack (Tailwind v4 lee del CSS).
+- ❌ No mezclar `dark:` de Tailwind con `palette.mode` de MUI sin sincronizar ambos — definir un solo "modo" de la app y propagarlo a los dos.
+- ❌ No hardcodear colores de marca dentro de componentes (`#9d737c`); siempre vía token (`bg-primary` o `palette.primary.main`).
+- ❌ No mezclar `styled-components` además de `@emotion`; MUI v6 usa Emotion por defecto y duplicar runtimes infla el bundle.

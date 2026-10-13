@@ -1,0 +1,118 @@
+---
+description: Backend — Node Fastify API, layers, Supabase, Vercel serverless, logging
+globs: apps/api/**/*.{ts,js},backend/**/*.py
+alwaysApply: false
+---
+
+# Backend
+
+**Target stack (new projects):** Node + **Fastify** + TypeScript on Vercel serverless.
+
+**Legacy stack:** Python + **FastAPI** (`backend/`) — same layer rules apply; map `routes` → `api/*_routes.py`, `services` → extract when routes grow.
+
+## Layout (Node)
+
+```
+apps/api/src/
+├── server.ts
+├── config.ts
+├── plugins/          # cors, auth, request-id, error-handler, rate-limit
+├── routes/           # *.routes.ts — thin
+├── services/         # *.service.ts — testable use-cases
+├── repositories/     # supabase, r2, rpc
+└── types/            # fastify augmentations
+```
+
+## Layout (FastAPI legacy)
+
+```
+backend/
+├── server.py         # FastAPI app, CORS, include router
+├── api/
+│   ├── router.py
+│   ├── config.py
+│   ├── auth_jwt.py
+│   ├── deps.py
+│   ├── supabase_client.py
+│   └── <domain>_routes.py
+├── requirements.txt
+├── .python-version    # 3.12
+└── vercel.json
+```
+
+Extract `services/` when a route file exceeds ~200 lines or second domain appears.
+
+## Entry responsibilities
+
+- Mount all routes under `/api` prefix.
+- CORS: explicit origin list + `allow_origin_regex` for `*.vercel.app` + `CORS_EXTRA_ORIGINS`.
+- `allow_credentials: true` — never `allow_origins=["*"]` with Authorization.
+- Root `GET /` returns `{ service, docs, corsProfile }` for deploy verification.
+
+## Vercel (`vercel.json`)
+
+- Node: `@vercel/node` or official Fastify adapter pattern.
+- Python: `builds` + `routes` to `server.py`; **`headers` block for CORS preflight** on edge (OPTIONS intercepted before Python).
+- Use `routes`, not `rewrites`, for Python — rewrites serve SPA HTML.
+
+## Config
+
+- All env access through `config.ts` / `api/config.py` with cached getters.
+- Accept alias env names (`SUPABASE_URL`, `supabase_SUPABASE_URL`) for Vercel dashboard drift.
+- `isDatabaseConfigured()` → 503 with clear message, never opaque 500.
+
+## Supabase client
+
+- Singleton **service_role** in server only.
+- All table access uses explicit schema (e.g. `.schema("anthea")`) when not `public`.
+- SDK calls from `async` handlers: `asyncio.to_thread` (Python) or native async client when available.
+- Scalar RPC: prefer `httpx`/`fetch` to PostgREST with `Content-Profile` header when SDK breaks on scalar UUID responses.
+
+## Auth plugin / dependency
+
+1. `Authorization: Bearer` required on protected routes.
+2. Verify JWT: local HS256 if secret set → else Supabase Auth `GET /auth/v1/user`.
+3. Load product role from `profiles` table per request — not from JWT claims.
+4. Return 401 (no/invalid token), 403 (wrong role), 503 (DB/config).
+
+## Domain endpoints (minimum set)
+
+| Route | Auth | Notes |
+|-------|------|-------|
+| `GET /api/health` | none | ping DB |
+| `GET /api/me` | user | role + flags |
+| `GET /api/catalog/products` | none | public catalog |
+| `GET /api/files/*` | none | R2 proxy + CORS |
+| `GET /api/pos/sales` | staff | cursor pagination |
+| `POST /api/pos/sales` | staff | idempotency key supported |
+
+## Sale creation flow
+
+1. Validate body with shared schema (no client `unitPrice` in input).
+2. Service loads catalog prices by `productId`.
+3. Build RPC payload with server-resolved prices; venta libre exception documented.
+4. Call `create_pos_sale` RPC atomically.
+5. Return full sale record.
+
+## Logging
+
+- Structured JSON logs (`pino` / stdlib `logging` with JSON formatter).
+- `request-id` on every request; log `request_id`, `user_id`, `sale_id` — never email/phone in logs.
+- `logger.exception` in `except` blocks; re-raise `HTTPException` with `from None` to clients.
+
+## Dependencies (Node baseline)
+
+`fastify`, `@supabase/supabase-js` or `jose` for JWT, `zod`, `pino`, `@aws-sdk/client-s3` (R2).
+
+## Dependencies (Python baseline)
+
+`fastapi`, `uvicorn`, `python-dotenv`, `supabase`, `PyJWT[crypto]`, `httpx`, `boto3` + `python-multipart` if uploads.
+
+## Anti-patterns
+
+- ❌ Endpoints in `server.py` beyond health root
+- ❌ `os.getenv` scattered outside config module
+- ❌ service_role in frontend bundle
+- ❌ Sync blocking SDK in async handler without `to_thread`
+- ❌ Trusting client `unitPrice` in RPC
+- ❌ 200 with `{ ok: false }` — use correct HTTP status
