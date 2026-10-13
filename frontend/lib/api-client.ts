@@ -8,7 +8,7 @@ export class ApiHttpError extends Error {
   }
 }
 
-const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/$/, "");
+const apiBase = (process.env.NEXT_API_URL ?? "").trim().replace(/\/$/, "");
 
 export function apiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
@@ -19,8 +19,8 @@ export function backendHint(): string {
   if (process.env.NODE_ENV === "development" && !apiBase) {
     return " En desarrollo, en backend/ ejecuta: .venv\\Scripts\\python -m uvicorn server:app --reload --port 8000";
   }
-  if (!apiBase) return " Define NEXT_PUBLIC_API_URL con la URL pública del API.";
-  return " Revisa que NEXT_PUBLIC_API_URL sea correcta y que el API esté en línea.";
+  if (!apiBase) return " Define NEXT_API_URL con la URL pública del API.";
+  return " Revisa que NEXT_API_URL sea correcta y que el API esté en línea.";
 }
 
 function parseDetail(detail: unknown): string {
