@@ -43,7 +43,7 @@ function PosShell() {
     <div className="min-h-dvh">
       <LoginIntro />
       <AppNav view={view} onNavigate={navigate} />
-      <main className="mx-auto w-full max-w-[1600px] px-4 py-6 lg:px-6 lg:py-8">
+      <main className="mx-auto w-full max-w-[1600px] px-4 pt-6 pb-24 md:pb-6 lg:px-6 lg:py-8">
         {status === "loading" ? (
           <div className="flex justify-center py-24">
             <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Cargando datos" />

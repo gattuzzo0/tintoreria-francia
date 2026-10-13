@@ -21,8 +21,6 @@ export function sanitizeText(value: string, max: number): string {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F<>]/g, "").slice(0, max);
 }
 
-export const formatPhone = (d: string) => `${d.slice(0, 2)} ${d.slice(2, 6)} ${d.slice(6, 10)}`;
-
 export type CustomerValidation =
   | { ok: true; name: string; phone: string }
   | { ok: false; errors: { name?: string; phone?: string } };
@@ -46,5 +44,5 @@ export function validateCustomer(
     errors.phone = "Ya existe un cliente con ese teléfono.";
 
   if (errors.name || errors.phone) return { ok: false, errors };
-  return { ok: true, name, phone: formatPhone(digits) };
+  return { ok: true, name, phone: digits };
 }

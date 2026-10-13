@@ -76,7 +76,7 @@ export function OrdersBoard() {
         {COLUMNS.map((status) => {
           const list = visible.filter((o) => o.status === status);
           return (
-            <section key={status} aria-labelledby={`col-${status}`} className="flex flex-col gap-3 rounded-2xl border bg-muted/50 p-3">
+            <section key={status} aria-labelledby={`col-${status}`} className="flex min-w-0 flex-col gap-3 rounded-2xl border bg-muted/50 p-3">
               <div className="flex items-center justify-between px-1">
                 <h2 id={`col-${status}`} className="text-sm font-medium">
                   {STATUS_META[status].label}
@@ -98,7 +98,7 @@ export function OrdersBoard() {
                         className={cn(
                           "cursor-pointer rounded-xl border bg-card p-3.5 transition-colors hover:border-primary/40",
                           isOpen && "border-primary/40",
-                          o.status === "entregado" && "opacity-60",
+                          o.status === "entregado" && "border-dashed bg-muted/40",
                         )}
                       >
                         <div className="flex items-center gap-2">
@@ -117,7 +117,7 @@ export function OrdersBoard() {
                                 e.stopPropagation();
                                 setNotesFolio(o.folio);
                               }}
-                              className="inline-flex size-6 items-center justify-center rounded-full bg-warning text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30"
+                              className="inline-flex size-8 items-center justify-center rounded-full bg-warning md:size-6 text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30"
                             >
                               <CircleAlert className="size-4" aria-hidden />
                             </button>

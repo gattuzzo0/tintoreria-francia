@@ -113,7 +113,7 @@ export function ReportsView() {
               </button>
             ))}
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1">
               <span className={LABEL}>Desde</span>
               <input
@@ -183,7 +183,7 @@ function ReportBody({ report: r }: { report: Report }) {
 
       <section className={CARD} aria-labelledby="rep-pending">
         <SectionTitle id="rep-pending" eyebrow="Hoy en tienda" title="Pendientes" />
-        <div className="grid gap-6 lg:grid-cols-[16rem_1fr_1.4fr]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[16rem_1fr_1.4fr]">
           <div className="flex flex-col gap-4">
             <Stat
               label="Por cobrar"
@@ -226,7 +226,7 @@ function ReportBody({ report: r }: { report: Report }) {
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className={CARD} aria-labelledby="rep-services">
           <SectionTitle id="rep-services" eyebrow="Sin cargo exprés" title="Servicios más vendidos" />
           <BarList

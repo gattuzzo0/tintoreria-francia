@@ -7,14 +7,11 @@ import { CATEGORIES, formatMoney, type Category } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { usePos } from "./pos-provider";
 
-type Tab = "Todos" | Category;
-const TABS: Tab[] = ["Todos", ...CATEGORIES];
-
 export function ServiceCatalog() {
   const { draft, addItem, setQty, services: all } = usePos();
-  const [tab, setTab] = useState<Tab>("Prendas");
+  const [tab, setTab] = useState<Category>("Prendas");
   const locked = !draft.customerId;
-  const services = tab === "Todos" ? all : all.filter((s) => s.category === tab);
+  const services = all.filter((s) => s.category === tab);
 
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-5" aria-labelledby="catalog-title">
@@ -25,8 +22,8 @@ export function ServiceCatalog() {
         </h1>
       </div>
 
-      <div role="tablist" aria-label="Categorías" className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((t) => (
+      <div role="tablist" aria-label="Categorías" className="flex gap-1.5 sm:gap-2">
+        {CATEGORIES.map((t) => (
           <button
             key={t}
             type="button"
@@ -34,7 +31,7 @@ export function ServiceCatalog() {
             aria-selected={tab === t}
             onClick={() => setTab(t)}
             className={cn(
-              "h-8 shrink-0 rounded-full border px-4 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+              "h-9 flex-1 rounded-full border px-2 text-sm sm:h-8 sm:flex-none sm:px-4 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
               tab === t
                 ? "border-primary bg-primary text-primary-foreground"
                 : "bg-card text-muted-foreground hover:text-foreground",

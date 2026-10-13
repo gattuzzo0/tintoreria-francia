@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from api.deps import require_pos_staff, require_staff_writer
 from api.supabase_client import get_supabase
-from api.validation import NAME_MAX, digits_only, format_phone, is_valid_person_name, normalize_name
+from api.validation import NAME_MAX, digits_only, is_valid_person_name, normalize_name
 
 logger = logging.getLogger(__name__)
 customers_router = APIRouter()
@@ -50,7 +50,7 @@ class CustomerCreate(BaseModel):
 
 
 def _row_to_customer_out(row: dict) -> CustomerOut:
-    return CustomerOut(id=str(row["id"]), name=row["name"], phone=format_phone(row["phone"]), email=row.get("email"))
+    return CustomerOut(id=str(row["id"]), name=row["name"], phone=row["phone"], email=row.get("email"))
 
 
 def _fetch_customers():

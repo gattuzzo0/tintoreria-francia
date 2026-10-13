@@ -4,7 +4,7 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { formatMoney } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 
-export const CARD = "rounded-2xl border bg-card p-5";
+export const CARD = "min-w-0 rounded-2xl border bg-card p-5";
 export const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
 
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -74,7 +74,7 @@ export function DailyChart({ points }: { points: { date: string; salesCents: num
       </div>
       <div className="mt-2 flex gap-[3px]">
         {points.map((p, i) => (
-          <span key={p.date} className="flex-1 text-center font-mono text-[10px] text-muted-foreground">
+          <span key={p.date} className="min-w-0 flex-1 text-center whitespace-nowrap font-mono text-[10px] text-muted-foreground">
             {i % every === 0 ? shortDate(p.date) : ""}
           </span>
         ))}
@@ -115,11 +115,18 @@ export function Heatmap({ cells }: { cells: { weekday: number; hour: number; ord
   const range = Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
   return (
-    <div className="overflow-x-auto">
+    <div
+      className="relative overflow-x-auto rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+      tabIndex={0}
+      role="region"
+      aria-label="Mapa de calor desplazable"
+    >
       <table className="w-full border-separate border-spacing-[3px] text-[10px]" aria-label="Órdenes por día y hora">
         <thead>
           <tr>
-            <th />
+            <th scope="col">
+              <span className="sr-only">Día</span>
+            </th>
             {range.map((h) => (
               <th key={h} scope="col" className="font-mono font-normal text-muted-foreground">
                 {h}

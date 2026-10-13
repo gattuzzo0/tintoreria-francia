@@ -23,9 +23,5 @@ def digits_only(value: str) -> str:
     return re.sub(r"\D", "", value)
 
 
-def format_phone(digits: str) -> str:
-    return f"{digits[:2]} {digits[2:6]} {digits[6:10]}"
-
-
 def sanitize_text(value: str, max_len: int) -> str:
     return _CONTROL_OR_ANGLE.sub("", value)[:max_len]

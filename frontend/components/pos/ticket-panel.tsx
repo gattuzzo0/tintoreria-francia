@@ -177,7 +177,7 @@ export function TicketPanel({ onRegisterPhone }: { onRegisterPhone: (phone: stri
             <button
               type="button"
               onClick={toggleCreating}
-              className={cn("inline-flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline", FOCUS)}
+              className={cn("inline-flex min-h-8 items-center gap-1 rounded px-1 text-xs font-medium text-primary hover:underline", FOCUS)}
             >
               {creating ? (
                 "Cancelar"
@@ -265,7 +265,7 @@ export function TicketPanel({ onRegisterPhone }: { onRegisterPhone: (phone: stri
                     <button
                       type="button"
                       onClick={() => onRegisterPhone(phone)}
-                      className={cn("inline-flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline", FOCUS)}
+                      className={cn("inline-flex min-h-8 items-center gap-1 rounded px-1 text-xs font-medium text-primary hover:underline", FOCUS)}
                     >
                       <UserPlus className="size-3.5" aria-hidden /> Dar de alta
                     </button>
@@ -288,7 +288,7 @@ export function TicketPanel({ onRegisterPhone }: { onRegisterPhone: (phone: stri
               <button
                 type="button"
                 onClick={() => updateDraft({ quantities: {} })}
-                className={cn("inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-destructive", FOCUS)}
+                className={cn("inline-flex min-h-8 items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:text-destructive", FOCUS)}
               >
                 <Trash2 className="size-3.5" aria-hidden /> Vaciar
               </button>
@@ -311,7 +311,7 @@ export function TicketPanel({ onRegisterPhone }: { onRegisterPhone: (phone: stri
                       type="button"
                       onClick={() => setQty(l.serviceId, l.qty - 1)}
                       aria-label={`Quitar una unidad de ${l.name}`}
-                      className={cn("inline-flex size-6 items-center justify-center rounded-md hover:bg-muted", FOCUS)}
+                      className={cn("inline-flex size-8 items-center justify-center rounded-md hover:bg-muted md:size-6", FOCUS)}
                     >
                       <Minus className="size-3" aria-hidden />
                     </button>
@@ -320,7 +320,7 @@ export function TicketPanel({ onRegisterPhone }: { onRegisterPhone: (phone: stri
                       type="button"
                       onClick={() => setQty(l.serviceId, l.qty + 1)}
                       aria-label={`Agregar una unidad de ${l.name}`}
-                      className={cn("inline-flex size-6 items-center justify-center rounded-md hover:bg-muted", FOCUS)}
+                      className={cn("inline-flex size-8 items-center justify-center rounded-md hover:bg-muted md:size-6", FOCUS)}
                     >
                       <Plus className="size-3" aria-hidden />
                     </button>
@@ -444,19 +444,17 @@ export function TicketPanel({ onRegisterPhone }: { onRegisterPhone: (phone: stri
       </div>
 
       <div className="shrink-0 border-t bg-muted/60 px-5 py-3">
-        <dl className="flex flex-col gap-0.5 font-mono text-xs text-muted-foreground">
-          <div className="flex justify-between gap-4">
-            <div className="flex gap-2">
-              <dt>Subtotal</dt>
-              <dd>{formatMoney(draftTotals.subtotal)}</dd>
-            </div>
-            <div className="flex gap-2">
-              <dt>IVA 16%</dt>
-              <dd>{formatMoney(draftTotals.tax)}</dd>
-            </div>
+        <dl className="flex flex-wrap justify-between gap-x-4 gap-y-0.5 font-mono text-xs text-muted-foreground">
+          <div className="flex gap-2">
+            <dt>Subtotal</dt>
+            <dd>{formatMoney(draftTotals.subtotal)}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt>IVA 16%</dt>
+            <dd>{formatMoney(draftTotals.tax)}</dd>
           </div>
           {draft.express && (
-            <div className="flex justify-between text-primary">
+            <div className="flex basis-full justify-between text-primary">
               <dt>Incluye exprés</dt>
               <dd>{formatMoney(draftTotals.surcharge)}</dd>
             </div>

@@ -24,10 +24,13 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
   const readyCount = orders.filter((o) => o.status === "listo").length;
 
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b bg-background md:bg-background/85 md:backdrop-blur-md">
       <div className="flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
         <BrandMark />
-        <nav aria-label="Secciones" className="flex gap-1 rounded-xl border bg-card p-1">
+        <nav
+          aria-label="Secciones"
+          className="fixed inset-x-0 bottom-0 z-30 flex gap-1 border-t bg-card p-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:static md:rounded-xl md:border md:pb-1"
+        >
           {ITEMS.filter((i) => isAdmin || !i.adminOnly).map(({ id, label, icon: Icon }) => {
             const active = view === id;
             return (
@@ -37,13 +40,13 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
                 onClick={() => onNavigate(id)}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                  "inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-lg px-1 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30 md:h-8 md:flex-none md:px-3",
                   active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon className="size-4" aria-hidden />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sr-only sm:hidden">{label}</span>
+                <Icon className="size-5 md:size-4" aria-hidden />
+                <span className="hidden lg:inline">{label}</span>
+                <span className="sr-only lg:hidden">{label}</span>
                 {id === "ordenes" && readyCount > 0 && (
                   <span
                     className={cn(
@@ -73,7 +76,7 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
             type="button"
             onClick={signOut}
             title={fullName ?? staffPhoneFromLoginEmail(email) ?? email ?? undefined}
-            className="inline-flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+            className="inline-flex h-11 items-center gap-2 rounded-lg px-3 text-sm md:h-8 md:px-2 text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
           >
             <LogOut className="size-4" aria-hidden />
             <span className="hidden md:inline">Cerrar sesión</span>

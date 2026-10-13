@@ -46,6 +46,8 @@ export function CatalogAdmin() {
   const [list, setList] = useState<Service[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [filter, setFilter] = useState<Category | null>(null);
+  const visible = filter ? list?.filter((s) => s.category === filter) : list;
 
   useEffect(() => {
     let cancelled = false;
@@ -106,21 +108,50 @@ export function CatalogAdmin() {
           <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Cargando catálogo" />
         </div>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {list.map((s) => (
-            <ServiceRow
-              key={s.id}
-              service={s}
-              onSave={async (patch) => commit(await withAuth((t) => updateService(t, s.id, patch)))}
-              onDelete={async () => {
-                await withAuth((t) => deleteService(t, s.id));
-                const next = list.filter((x) => x.id !== s.id);
-                setList(next);
-                setServices(next);
-              }}
-            />
-          ))}
-        </ul>
+        <>
+          <div role="group" aria-label="Filtrar por categoría" className="flex gap-2 overflow-x-auto pb-1">
+            {[null, ...CATEGORIES].map((c) => (
+              <button
+                key={c ?? "todos"}
+                type="button"
+                aria-pressed={filter === c}
+                onClick={() => setFilter(c)}
+                className={cn(
+                  "h-9 shrink-0 rounded-full border px-4 text-sm transition-colors",
+                  FOCUS,
+                  filter === c
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-card text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {c ?? "Todos"}
+                <span className="ml-1.5 font-mono text-xs">
+                  {c ? list.filter((s) => s.category === c).length : list.length}
+                </span>
+              </button>
+            ))}
+          </div>
+          {visible?.length === 0 && (
+            <p className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+              Sin servicios en esta categoría.
+            </p>
+          )}
+          <ul className="flex flex-col gap-2">
+            {visible?.map((s) => (
+              <ServiceRow
+                key={s.id}
+                service={s}
+                onSave={async (patch) => commit(await withAuth((t) => updateService(t, s.id, patch)))}
+                onDelete={async () => {
+                  await withAuth((t) => deleteService(t, s.id));
+                  const next = list.filter((x) => x.id !== s.id);
+                  setList(next);
+                  setServices(next);
+                }}
+              />
+            ))}
+          </ul>
+        </>
       )}
     </section>
   );
@@ -181,7 +212,7 @@ function ServiceRow({
   }
 
   return (
-    <li className={cn("flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3", !service.active && "opacity-60")}>
+    <li className={cn("flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3", !service.active && "border-dashed bg-muted/40")}>
       <span className="w-10 font-mono text-xs text-muted-foreground">{service.id}</span>
       <span className="min-w-40 flex-1 text-sm font-medium">{service.name}</span>
       <span className="w-24 text-xs text-muted-foreground">{service.category}</span>

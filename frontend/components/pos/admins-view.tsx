@@ -179,7 +179,7 @@ export function AdminsView() {
               <button
                 type="button"
                 onClick={() => setShow((v) => !v)}
-                className={cn("inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground", FOCUS)}
+                className={cn("inline-flex min-h-8 items-center gap-1 rounded px-1 text-xs text-muted-foreground hover:text-foreground", FOCUS)}
                 aria-pressed={show}
               >
                 {show ? <EyeOff className="size-3.5" aria-hidden /> : <Eye className="size-3.5" aria-hidden />}
@@ -257,14 +257,14 @@ export function AdminsView() {
                   ) : (
                     <User className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                   )}
-                  <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium">{a.phone ?? "—"}</span>
+                  <span className="flex-1 font-mono text-sm font-medium whitespace-nowrap">{a.phone ?? "—"}</span>
                   <span
                     className={cn(
                       "rounded-full px-2 py-0.5 text-[11px] font-medium",
                       a.role === "admin" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
                     )}
                   >
-                    {a.role === "admin" ? "Administrador" : "Empleado"}
+                    {a.role === "admin" ? "Admin" : "Empleado"}
                   </span>
                   {a.userId === myId && (
                     <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] tracking-[0.14em]">TÚ</span>

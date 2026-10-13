@@ -13,7 +13,6 @@ from supabase_auth.errors import AuthApiError
 from api.config import STAFF_LOGIN_DOMAIN
 from api.deps import require_admin, require_admin_writer
 from api.supabase_client import get_supabase
-from api.validation import format_phone
 
 logger = logging.getLogger(__name__)
 admins_router = APIRouter()
@@ -60,7 +59,7 @@ def _iso(value) -> str:
 
 def _phone_from_login_email(email: str | None) -> str | None:
     local, _, domain = (email or "").partition("@")
-    return format_phone(local) if domain == STAFF_LOGIN_DOMAIN and _PHONE_RE.match(local) else None
+    return local if domain == STAFF_LOGIN_DOMAIN and _PHONE_RE.match(local) else None
 
 
 def _list_admins() -> list[AdminOut]:
@@ -97,7 +96,7 @@ def _create_admin(body: AdminCreate) -> AdminOut:
         sb.auth.admin.delete_user(user.id)
         raise
     return AdminOut(
-        userId=str(user.id), phone=format_phone(body.phone), role=body.role, createdAt=_iso(row["created_at"])
+        userId=str(user.id), phone=body.phone, role=body.role, createdAt=_iso(row["created_at"])
     )
 
 
