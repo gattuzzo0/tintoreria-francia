@@ -32,7 +32,6 @@ export function ServiceCatalog({
         <CustomerLookup
           key={lookupKey}
           onRegisterPhone={onRegisterPhone}
-          autoFocus
           compact
           className="w-full lg:hidden"
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronDown, CircleAlert, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDeliveryShort } from "@/lib/delivery";
@@ -11,14 +11,23 @@ import { usePos } from "./pos-provider";
 
 const COLUMNS: OrderStatus[] = ["recibido", "proceso", "listo", "entregado"];
 const FOLIO_MAX_DIGITS = 9;
+/** Tailwind `md` — autofocus del buscador solo en desktop. */
+const DESKTOP_MQ = "(min-width: 768px)";
 
 export function OrdersBoard() {
   const { orders, getCustomer, advanceOrder } = usePos();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState<{ folio: number; message: string } | null>(null);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [notesFolio, setNotesFolio] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (window.matchMedia(DESKTOP_MQ).matches) {
+      searchRef.current?.focus();
+    }
+  }, []);
   const notesOrder = orders.find((o) => o.folio === notesFolio) ?? null;
   const toggle = (folio: number) => setExpanded((f) => (f === folio ? null : folio));
   const visible = query ? orders.filter((o) => String(o.folio).includes(query)) : orders;
@@ -49,8 +58,8 @@ export function OrdersBoard() {
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <input
+            ref={searchRef}
             type="search"
-            autoFocus
             inputMode="numeric"
             aria-label="Buscar número de orden"
             placeholder="Número de orden…"

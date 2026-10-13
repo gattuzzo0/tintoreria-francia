@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Search, UserCheck, UserPlus, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiHttpError } from "@/lib/api-client";
@@ -19,6 +19,8 @@ const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 const INPUT =
   "h-10 w-full rounded-xl border border-input bg-background px-3 text-base sm:text-sm placeholder:text-muted-foreground aria-invalid:border-destructive " +
   FOCUS;
+/** Tailwind `lg` — el lookup del ticket solo es visible en desktop. */
+const DESKTOP_MQ = "(min-width: 1024px)";
 
 type LookupStatus = "idle" | "invalid" | "missing";
 
@@ -36,6 +38,7 @@ export function CustomerLookup({
 }) {
   const { draft, customers, updateDraft, addCustomer, getCustomer } = usePos();
   const customer = draft.customerId ? getCustomer(draft.customerId) : undefined;
+  const phoneRef = useRef<HTMLInputElement>(null);
   const uid = useId();
   const nameId = `${uid}-name`;
   const phoneId = `${uid}-phone`;
@@ -48,6 +51,13 @@ export function CustomerLookup({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    if (window.matchMedia(DESKTOP_MQ).matches) {
+      phoneRef.current?.focus();
+    }
+  }, [autoFocus]);
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [busy, setBusy] = useState(false);
 
@@ -188,9 +198,9 @@ export function CustomerLookup({
         <>
           <form noValidate onSubmit={onLookup} className={cn(!compact && "flex gap-2")}>
             <input
+              ref={phoneRef}
               id={phoneId}
               type="tel"
-              autoFocus={autoFocus}
               inputMode="numeric"
               pattern="[0-9]{10}"
               className={cn(INPUT, "font-mono tracking-wider")}
