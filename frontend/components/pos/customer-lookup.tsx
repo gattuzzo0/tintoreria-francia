@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Search, UserCheck, UserPlus, UserX } from "lucide-react";
+import { Phone, Search, UserCheck, UserPlus, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiHttpError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -16,8 +16,9 @@ import { usePos } from "./pos-provider";
 
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
+/** Border + card fill so field reads as type-here on light POS bg. */
 const INPUT =
-  "h-10 w-full rounded-xl border border-input bg-background px-3 text-base sm:text-sm placeholder:text-muted-foreground aria-invalid:border-destructive " +
+  "h-11 w-full rounded-xl border-2 border-foreground/20 bg-card px-3 text-base shadow-sm sm:text-sm placeholder:text-foreground/55 aria-invalid:border-destructive " +
   FOCUS;
 /** Tailwind `lg` — el lookup del ticket solo es visible en desktop. */
 const DESKTOP_MQ = "(min-width: 1024px)";
@@ -170,7 +171,7 @@ export function CustomerLookup({
             inputMode="numeric"
             pattern="[0-9]{10}"
             className={cn(INPUT, "font-mono tracking-wider")}
-            placeholder="Teléfono (10 dígitos)"
+            placeholder="Teléfono.... (10 dígitos)"
             autoComplete="off"
             value={newPhone}
             onChange={(e) => setNewPhone(sanitizePhoneInput(e.target.value))}
@@ -197,21 +198,27 @@ export function CustomerLookup({
       ) : (
         <>
           <form noValidate onSubmit={onLookup} className={cn(!compact && "flex gap-2")}>
-            <input
-              ref={phoneRef}
-              id={phoneId}
-              type="tel"
-              inputMode="numeric"
-              pattern="[0-9]{10}"
-              className={cn(INPUT, "font-mono tracking-wider")}
-              placeholder="Teléfono (10 dígitos)"
-              autoComplete="off"
-              aria-label="Teléfono del cliente"
-              value={phone}
-              onChange={(e) => onPhoneChange(e.target.value)}
-              aria-invalid={status === "invalid"}
-              aria-describedby={resultId}
-            />
+            <div className="relative min-w-0 flex-1">
+              <Phone
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
+              <input
+                ref={phoneRef}
+                id={phoneId}
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]{10}"
+                className={cn(INPUT, "pl-10 font-mono tracking-wider")}
+                placeholder="Teléfono.... (10 dígitos)"
+                autoComplete="off"
+                aria-label="Teléfono del cliente"
+                value={phone}
+                onChange={(e) => onPhoneChange(e.target.value)}
+                aria-invalid={status === "invalid"}
+                aria-describedby={resultId}
+              />
+            </div>
             {!compact && (
               <Button type="submit" variant="outline" size="icon-lg" className="rounded-xl" aria-label="Buscar cliente">
                 <Search aria-hidden />

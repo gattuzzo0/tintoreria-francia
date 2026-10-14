@@ -1,22 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Banknote,
-  CalendarDays,
-  Clock,
-  CreditCard,
-  Minus,
-  Plus,
-  Repeat,
-  Trash2,
-  Zap,
-} from "lucide-react";
+import { CalendarDays, Minus, Plus, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDeliveryLong, formatDeliveryShort, isInDeliveryWindow } from "@/lib/delivery";
-import { formatMoney, type Order, type PaymentMethod } from "@/lib/pos-data";
+import { formatMoney, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NOTES_MAX, sanitizeText } from "@/lib/validation";
+import { CheckoutConfirmDialog } from "./checkout-confirm-dialog";
 import { CustomerLookup } from "./customer-lookup";
 import { DeliveryDateDialog } from "./delivery-date-dialog";
 import { ReceiptDialog } from "./receipt-dialog";
@@ -24,13 +15,6 @@ import { usePos } from "./pos-provider";
 
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
-
-const PAYMENTS: { id: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
-  { id: "tarjeta", label: "Tarjeta", icon: CreditCard },
-  { id: "efectivo", label: "Efectivo", icon: Banknote },
-  { id: "transferencia", label: "Transfer.", icon: Repeat },
-  { id: "pendiente", label: "Al recoger", icon: Clock },
-];
 
 export function TicketPanel({
   onRegisterPhone,
@@ -48,6 +32,7 @@ export function TicketPanel({
   const [busy, setBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const deliveryOk = Boolean(draft.deliveryDate) && isInDeliveryWindow(draft.deliveryDate);
   const deliveryReady = draft.express !== null && deliveryOk;
 
@@ -65,10 +50,12 @@ export function TicketPanel({
     try {
       const order = await checkout();
       if (!order) return;
+      setConfirming(false);
       setReceipt(order);
       onSaleComplete?.();
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : "No se pudo registrar la orden.");
+      setConfirming(false);
     } finally {
       setBusy(false);
     }
@@ -226,33 +213,6 @@ export function TicketPanel({
           />
         </div>
 
-        <fieldset
-          disabled={!deliveryReady}
-          className="shrink-0 transition-opacity disabled:opacity-50 [&_button]:disabled:cursor-not-allowed"
-        >
-          <legend className={cn(LABEL, "mb-1.5")}>Método de pago</legend>
-          <div className="grid grid-cols-4 gap-2">
-            {PAYMENTS.map(({ id, label, icon: Icon }) => {
-              const active = draft.payment === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => updateDraft({ payment: id })}
-                  className={cn(
-                    "flex flex-col items-center gap-0.5 rounded-xl border px-1 py-1.5 text-[11px] font-medium transition-colors",
-                    FOCUS,
-                    active ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-4" aria-hidden />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
       </div>
 
       <div className="shrink-0 border-t bg-muted/60 px-5 py-3">
@@ -281,7 +241,10 @@ export function TicketPanel({
             size="lg"
             className="mt-2.5 w-full rounded-xl short:mt-0 short:flex-1"
             disabled={draftLines.length === 0 || !customer || !deliveryReady || busy}
-            onClick={() => void onCheckout()}
+            onClick={() => {
+              setCheckoutError(null);
+              setConfirming(true);
+            }}
           >
             Cobrar {formatMoney(draftTotals.total)}
           </Button>
@@ -293,6 +256,18 @@ export function TicketPanel({
         )}
       </div>
 
+      <CheckoutConfirmDialog
+        open={confirming}
+        deliveryDate={draft.deliveryDate}
+        totalCents={draftTotals.total}
+        payment={draft.payment}
+        busy={busy}
+        onPaymentChange={(payment) => updateDraft({ payment })}
+        onConfirm={() => void onCheckout()}
+        onClose={() => {
+          if (!busy) setConfirming(false);
+        }}
+      />
       <ReceiptDialog order={receipt} onClose={() => setReceipt(null)} />
       <DeliveryDateDialog
         open={pickingDate}
