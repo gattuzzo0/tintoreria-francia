@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, ChevronDown, CircleAlert, Search, StickyNote, Zap } from "lucide-react";
+import { ArrowRight, ChevronDown, CircleAlert, MessageCircle, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getBranchInfo } from "@/lib/branches";
 import { formatDeliveryShort } from "@/lib/delivery";
 import { formatDate, formatMoney, PAYMENT_LABEL, STATUS_META, type OrderStatus } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
+import { readyMessage, whatsappSendUrl } from "@/lib/whatsapp";
+import { GarmentColorMark } from "./color-revolver";
 import { OrderNotesDialog } from "./order-notes-dialog";
 import { usePos } from "./pos-provider";
 
@@ -98,16 +101,25 @@ export function OrdersBoard() {
                 <ul className="flex flex-col gap-2">
                   {list.map((o) => {
                     const meta = STATUS_META[o.status];
+                    const customer = getCustomer(o.customerId);
                     const pieces = o.lines.reduce((n, l) => n + l.qty, 0);
                     const isOpen = expanded === o.folio;
+                    const receivedBg =
+                      o.status !== "recibido"
+                        ? null
+                        : o.branch === "Nereo Rdz."
+                          ? "bg-red-200"
+                          : o.branch === "Centro"
+                            ? "bg-pink-200"
+                            : null;
                     return (
                       <li
                         key={o.folio}
                         onClick={() => toggle(o.folio)}
                         className={cn(
-                          "cursor-pointer rounded-xl border bg-card p-3.5 transition-colors hover:border-primary/40",
+                          "cursor-pointer rounded-xl border p-3.5 transition-colors hover:border-primary/40",
+                          receivedBg ?? (o.status === "entregado" ? "border-dashed bg-muted/40" : "bg-card"),
                           isOpen && "border-primary/40",
-                          o.status === "entregado" && "border-dashed bg-muted/40",
                         )}
                       >
                         <div className="flex items-center gap-2">
@@ -153,7 +165,7 @@ export function OrdersBoard() {
                           }}
                           className="mt-2 block w-full rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
                         >
-                          <span className="block text-sm font-medium">{getCustomer(o.customerId)?.name ?? "—"}</span>
+                          <span className="block text-sm font-medium">{customer?.name ?? "—"}</span>
                           <span className="flex items-center gap-1 text-xs text-muted-foreground">
                             <span className="truncate">
                               {pieces} prendas{isOpen ? "" : ` · ${o.lines.map((l) => l.name).join(", ")}`}
@@ -167,12 +179,12 @@ export function OrdersBoard() {
                         {isOpen && (
                           <ul id={`order-lines-${o.folio}`} className="mt-2 flex flex-col gap-1 rounded-lg bg-muted/60 p-2.5 text-xs">
                             {o.lines.map((l) => (
-                              <li key={l.serviceId} className="flex items-baseline justify-between gap-3">
+                              <li key={`${l.serviceId}:${l.color}`} className="flex items-baseline justify-between gap-3">
                                 <span>
                                   <span className="font-mono">
                                     {l.qty} {l.unit}
                                   </span>{" "}
-                                  · {l.name}
+                                  · {l.name} <GarmentColorMark color={l.color} />
                                 </span>
                                 <span className="font-mono text-muted-foreground">{formatMoney(l.unitPriceCents * l.qty)}</span>
                               </li>
@@ -201,6 +213,31 @@ export function OrdersBoard() {
                           >
                             <StickyNote aria-hidden /> Notas
                           </Button>
+                          {o.status === "listo" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!customer?.phone}
+                              title={customer?.phone ? "Avisar por WhatsApp" : "Sin teléfono"}
+                              aria-label={`Avisar por WhatsApp que la orden ${o.folio} está lista`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!customer?.phone) return;
+                                const branch = getBranchInfo(o.branch);
+                                window.location.href = whatsappSendUrl(
+                                  customer.phone,
+                                  readyMessage(
+                                    customer.name,
+                                    o.folio,
+                                    { branch: o.branch, hours: branch?.hours },
+                                    o.payment === "pendiente" ? formatMoney(o.totalCents) : undefined,
+                                  ),
+                                );
+                              }}
+                            >
+                              <MessageCircle aria-hidden /> WhatsApp
+                            </Button>
+                          )}
                           {meta.next && (
                             <Button
                               size="sm"

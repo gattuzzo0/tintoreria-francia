@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CalendarDays, X } from "lucide-react";
-import { addDays, deliveryWindow, formatDeliveryLong, formatMonthShort, parseIsoDate, toIsoDate } from "@/lib/delivery";
+import { CalendarDays, X, Zap } from "lucide-react";
+import { addDays, deliveryOn, deliveryWindow, formatDeliveryLong, formatDeliveryShort, formatMonthShort, isSunday, parseIsoDate, toIsoDate } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
@@ -21,13 +21,11 @@ function calendarDays(min: string, max: string): Date[] {
 export function DeliveryDateDialog({
   open,
   value,
-  express,
   onSelect,
   onClose,
 }: {
   open: boolean;
   value: string;
-  express: boolean;
   onSelect: (iso: string) => void;
   onClose: () => void;
 }) {
@@ -63,7 +61,7 @@ export function DeliveryDateDialog({
             </span>
             <div className="min-w-0 flex-1">
               <h2 id="delivery-title" className="font-semibold tracking-tight">
-                Fecha de entrega · {express ? "Exprés" : "Regular"}
+                Fecha de entrega · Regular
               </h2>
               <p className="text-xs text-muted-foreground">{months.join(" – ")}</p>
             </div>
@@ -85,7 +83,7 @@ export function DeliveryDateDialog({
             ))}
             {days.map((d) => {
               const iso = toIsoDate(d);
-              const enabled = iso >= min && iso <= max;
+              const enabled = iso >= min && iso <= max && !isSunday(d);
               const selected = iso === value;
               return (
                 <button
@@ -117,7 +115,126 @@ export function DeliveryDateDialog({
           </div>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            Disponible de mañana al {formatDeliveryLong(max)}.
+            Disponible del {formatDeliveryLong(min)} al {formatDeliveryLong(max)}. Los domingos no hay entrega.
+          </p>
+        </div>
+      )}
+    </dialog>
+  );
+}
+
+const CHOICE =
+  "h-14 rounded-xl border text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30";
+
+export function ExpressDeliveryDialog({
+  open,
+  value,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  value: string;
+  onSelect: (iso: string) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  const today = deliveryOn(0);
+  const next = deliveryOn(1);
+  const urgent = deliveryOn(2);
+  const extra = value === today || value === next;
+  const nextDay = value === next;
+
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current?.close()}
+      aria-labelledby="express-delivery-title"
+      className="m-auto w-[calc(100%-2rem)] max-w-sm bg-transparent p-0 backdrop:bg-foreground/50 backdrop:backdrop-blur-sm"
+    >
+      {open && (
+        <div className="rounded-2xl bg-background p-5 shadow-2xl animate-in fade-in zoom-in-95">
+          <div className="mb-4 flex items-start gap-3">
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Zap className="size-4" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 id="express-delivery-title" className="font-semibold tracking-tight">
+                Entrega exprés
+              </h2>
+              <p className="text-xs text-muted-foreground">Extra urgente u urgente</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => ref.current?.close()}
+              aria-label="Cerrar"
+              className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              aria-pressed={extra}
+              onClick={() => {
+                if (!extra) onSelect(today);
+              }}
+              className={cn(CHOICE, extra ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted")}
+            >
+              Extra urgente
+            </button>
+            <button
+              type="button"
+              aria-pressed={value === urgent}
+              onClick={() => {
+                onSelect(urgent);
+                ref.current?.close();
+              }}
+              className={cn(
+                CHOICE,
+                value === urgent ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
+              )}
+            >
+              Urgente
+              <span className="mt-0.5 block text-[11px] font-normal">{formatDeliveryShort(urgent)}</span>
+            </button>
+          </div>
+
+          {extra && (
+            <div className="mt-4 flex items-center justify-center gap-3 text-sm">
+              <span className={cn(nextDay && "font-semibold")}>Día siguiente</span>
+              <label className="relative inline-flex cursor-pointer items-center">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={!nextDay}
+                  aria-label={nextDay ? "Entrega al día siguiente" : "Entrega el mismo día"}
+                  onChange={(e) => onSelect(deliveryOn(e.target.checked ? 0 : 1))}
+                  className="peer sr-only"
+                />
+                <span className="h-6 w-11 rounded-full bg-muted peer-checked:bg-primary peer-focus-visible:ring-3 peer-focus-visible:ring-ring/30" />
+                <span className="pointer-events-none absolute top-0.5 left-0.5 size-5 rounded-full bg-background transition-transform peer-checked:translate-x-5" />
+              </label>
+              <span className={cn(!nextDay && "font-semibold")}>Mismo día</span>
+            </div>
+          )}
+
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            {extra
+              ? formatDeliveryLong(value)
+              : value === urgent
+                ? `Entrega en 2 días · ${formatDeliveryLong(urgent)}`
+                : "Extra urgente: hoy o mañana. Urgente: en 2 días."}
           </p>
         </div>
       )}

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 BUSINESS_TZ = timezone(timedelta(hours=-6))
 MAX_RANGE_DAYS = 366
 PAYMENT_METHODS = ("tarjeta", "efectivo", "transferencia", "pendiente")
-BRANCHES = ("Nereo Rdz.", "Himno Nal.", "Centro")
+BRANCHES = ("Nereo Rdz.", "Sucursal móvil", "Centro")
 AGING_BUCKETS = ((0, 7, "0–7 días"), (8, 15, "8–15 días"), (16, 30, "16–30 días"), (31, None, "Más de 30 días"))
 _PAGE = 1000
 _IN_CHUNK = 200

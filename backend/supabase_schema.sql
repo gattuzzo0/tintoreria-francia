@@ -66,7 +66,7 @@ create table if not exists tintoreria_francia.orders (
   folio integer primary key default nextval('tintoreria_francia.orders_folio_seq'),
   customer_id uuid not null references tintoreria_francia.customers (id),
   express boolean not null default false,
-  delivery_days integer not null check (delivery_days between 1 and 30),
+  delivery_days integer not null check (delivery_days between 0 and 30),
   delivery_date date,
   payment_method text not null check (payment_method in ('efectivo', 'tarjeta', 'transferencia', 'pendiente')),
   status text not null default 'recibido' check (status in ('recibido', 'proceso', 'listo', 'entregado')),
@@ -78,7 +78,7 @@ create table if not exists tintoreria_francia.orders (
   total_cents integer not null default 0 check (total_cents >= 0),
   staff_user_id uuid references auth.users (id) on delete set null,
   idempotency_key text unique,
-  branch text check (branch is null or branch in ('Nereo Rdz.', 'Himno Nal.', 'Centro')),
+  branch text check (branch is null or branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro')),
   created_at timestamptz not null default now(),
   status_updated_at timestamptz not null default now()
 );
@@ -87,7 +87,7 @@ create table if not exists tintoreria_francia.orders (
 alter table tintoreria_francia.orders add column if not exists delivery_date date;
 alter table tintoreria_francia.orders
   add column if not exists branch text
-  check (branch is null or branch in ('Nereo Rdz.', 'Himno Nal.', 'Centro'));
+  check (branch is null or branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro'));
 create index if not exists idx_tintoreria_francia_orders_branch on tintoreria_francia.orders (branch);
 
 create table if not exists tintoreria_francia.order_lines (
@@ -98,7 +98,8 @@ create table if not exists tintoreria_francia.order_lines (
   unit text not null,
   unit_price_cents integer not null check (unit_price_cents > 0),
   qty integer not null check (qty between 1 and 999),
-  unique (order_folio, service_id)
+  color text not null default '' check (color in ('', 'rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco')),
+  unique (order_folio, service_id, color)
 );
 
 -- Historial de estados (para medir tiempos de proceso). Lo llena el trigger
@@ -192,7 +193,7 @@ $$;
 -- create_order: crea orden + líneas en una transacción. Los precios se
 -- resuelven del catálogo (nunca del cliente). Idempotente por p_idempotency_key.
 -- p_lines: [{"serviceId": "s1", "qty": 2}, ...]
--- p_delivery_date: entre mañana y 15 días después (día local CDMX).
+-- p_delivery_date (día local CDMX): regular +5…+15; exprés hoy, mañana o +2. Domingo → lunes.
 -- ---------------------------------------------------------------------
 drop function if exists tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, text);
 drop function if exists tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, date, text);
@@ -219,7 +220,12 @@ declare
   v_line jsonb;
   v_service tintoreria_francia.services%rowtype;
   v_qty integer;
+  v_color text;
   v_today date := (now() at time zone 'America/Mexico_City')::date;
+  v_same date;
+  v_next date;
+  v_urgent date;
+  v_regular_min date;
 begin
   if p_idempotency_key is not null then
     select folio into v_folio from tintoreria_francia.orders where idempotency_key = p_idempotency_key;
@@ -228,7 +234,7 @@ begin
     end if;
   end if;
 
-  if p_branch is null or p_branch not in ('Nereo Rdz.', 'Himno Nal.', 'Centro') then
+  if p_branch is null or p_branch not in ('Nereo Rdz.', 'Sucursal móvil', 'Centro') then
     raise exception 'Sucursal inválida' using errcode = '22023';
   end if;
 
@@ -240,8 +246,21 @@ begin
     raise exception 'Cliente no encontrado' using errcode = '22023';
   end if;
 
-  if p_delivery_date is null or p_delivery_date < v_today + 1 or p_delivery_date > v_today + 15 then
-    raise exception 'La fecha de entrega debe estar entre mañana y 15 días después' using errcode = '22023';
+  v_same := v_today + (extract(dow from v_today)::int = 0)::int;
+  v_next := v_today + 1 + (extract(dow from (v_today + 1))::int = 0)::int;
+  v_urgent := v_today + 2 + (extract(dow from (v_today + 2))::int = 0)::int;
+  v_regular_min := v_today + 5 + (extract(dow from (v_today + 5))::int = 0)::int;
+
+  if p_delivery_date is not null and extract(dow from p_delivery_date) = 0 then
+    raise exception 'No entregamos en domingo' using errcode = '22023';
+  end if;
+
+  if p_express then
+    if p_delivery_date is null or p_delivery_date not in (v_same, v_next, v_urgent) then
+      raise exception 'La entrega exprés debe ser hoy, mañana o en 2 días, y no en domingo' using errcode = '22023';
+    end if;
+  elsif p_delivery_date is null or p_delivery_date < v_regular_min or p_delivery_date > v_today + 15 then
+    raise exception 'La entrega regular debe ser entre 5 y 15 días, sin domingos' using errcode = '22023';
   end if;
 
   insert into tintoreria_francia.orders
@@ -256,14 +275,19 @@ begin
       raise exception 'Cantidad inválida' using errcode = '22023';
     end if;
 
+    v_color := v_line ->> 'color';
+    if v_color is null or v_color not in ('rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco') then
+      raise exception 'Color inválido' using errcode = '22023';
+    end if;
+
     select * into v_service from tintoreria_francia.services
      where id = v_line ->> 'serviceId' and active;
     if not found then
       raise exception 'Servicio no disponible: %', v_line ->> 'serviceId' using errcode = '22023';
     end if;
 
-    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty)
-    values (v_folio, v_service.id, v_service.name, v_service.unit, v_service.price_cents, v_qty);
+    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color)
+    values (v_folio, v_service.id, v_service.name, v_service.unit, v_service.price_cents, v_qty, v_color);
   end loop;
 
   perform tintoreria_francia.recalc_order_totals(v_folio);

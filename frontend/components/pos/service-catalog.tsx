@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Plus, RotateCcw } from "lucide-react";
+import { qtyForService } from "@/lib/garment-colors";
 import { CATEGORIES, formatMoney, type Category } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
+import { ColorRevolver } from "./color-revolver";
 import { CustomerLookup } from "./customer-lookup";
 import { usePos } from "./pos-provider";
 
@@ -15,8 +17,9 @@ export function ServiceCatalog({
   onRegisterPhone: (phone: string) => void;
   lookupKey?: number;
 }) {
-  const { draft, addItem, setQty, services: all } = usePos();
+  const { draft, addItem, clearService, services: all } = usePos();
   const [tab, setTab] = useState<Category>("Prendas");
+  const [picking, setPicking] = useState<{ id: string; name: string } | null>(null);
   const locked = !draft.customerId;
   const services = all.filter((s) => s.category === tab);
 
@@ -59,13 +62,13 @@ export function ServiceCatalog({
 
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {services.map((s) => {
-          const qty = draft.quantities[s.id] ?? 0;
+          const qty = qtyForService(draft.quantities, s.id);
           return (
             <li key={s.id} className="relative">
               <button
                 type="button"
                 disabled={locked}
-                onClick={() => addItem(s.id)}
+                onClick={() => setPicking({ id: s.id, name: s.name })}
                 className={cn(
                   "group relative isolate flex min-h-32 w-full flex-col justify-between gap-6 overflow-hidden rounded-xl border bg-card p-4 text-left transition-all duration-200 outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
                   locked
@@ -110,7 +113,7 @@ export function ServiceCatalog({
               {qty > 0 && !locked && (
                 <button
                   type="button"
-                  onClick={() => setQty(s.id, 0)}
+                  onClick={() => clearService(s.id)}
                   aria-label={`Reiniciar cantidad de ${s.name}`}
                   title="Reiniciar cantidad"
                   className="absolute right-3 bottom-3 inline-flex size-8 items-center justify-center rounded-full border bg-background text-muted-foreground transition-colors outline-none hover:border-destructive/40 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/30"
@@ -122,6 +125,14 @@ export function ServiceCatalog({
           );
         })}
       </ul>
+      <ColorRevolver
+        open={picking !== null}
+        garment={picking?.name ?? ""}
+        onSelect={(color) => {
+          if (picking) addItem(picking.id, color);
+        }}
+        onClose={() => setPicking(null)}
+      />
     </section>
   );
 }

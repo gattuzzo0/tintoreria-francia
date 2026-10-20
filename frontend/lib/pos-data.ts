@@ -17,7 +17,15 @@ export type OrderStatus = "recibido" | "proceso" | "listo" | "entregado";
 
 export type PaymentMethod = "efectivo" | "tarjeta" | "transferencia" | "pendiente";
 
-export type OrderLine = { serviceId: string; name: string; unit: Unit; unitPriceCents: number; qty: number };
+export type OrderLine = {
+  serviceId: string;
+  name: string;
+  unit: Unit;
+  unitPriceCents: number;
+  qty: number;
+  /** Vacío en órdenes anteriores al color. */
+  color: string;
+};
 
 export type OrderNote = { id: number; body: string; createdAt: string };
 
