@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { CalendarDays, Minus, Plus, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatDeliveryLong, formatDeliveryShort, isInDeliveryWindow } from "@/lib/delivery";
+import { deliveryOn, formatDeliveryLong, formatDeliveryShort, isAllowedDelivery, REGULAR_MIN_DAYS } from "@/lib/delivery";
 import { formatMoney, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NOTES_MAX, sanitizeText } from "@/lib/validation";
+import { GarmentColorMark } from "./color-revolver";
 import { CheckoutConfirmDialog } from "./checkout-confirm-dialog";
 import { CustomerLookup } from "./customer-lookup";
-import { DeliveryDateDialog } from "./delivery-date-dialog";
+import { DeliveryDateDialog, ExpressDeliveryDialog } from "./delivery-date-dialog";
 import { ReceiptDialog } from "./receipt-dialog";
 import { usePos } from "./pos-provider";
 
@@ -32,13 +33,18 @@ export function TicketPanel({
   const [busy, setBusy] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
+  const [pickingExpress, setPickingExpress] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const deliveryOk = Boolean(draft.deliveryDate) && isInDeliveryWindow(draft.deliveryDate);
-  const deliveryReady = draft.express !== null && deliveryOk;
+  const deliveryOk =
+    draft.express !== null && Boolean(draft.deliveryDate) && isAllowedDelivery(draft.deliveryDate, draft.express);
 
   const chooseDelivery = (express: boolean) => {
-    updateDraft({ express });
-    setPickingDate(true);
+    if (express) {
+      updateDraft({ express: true });
+      setPickingExpress(true);
+      return;
+    }
+    updateDraft({ express: false, deliveryDate: deliveryOn(REGULAR_MIN_DAYS) });
   };
 
   const nextFolio = Math.max(1000, ...orders.map((o) => o.folio)) + 1;
@@ -103,15 +109,16 @@ export function TicketPanel({
           ) : (
             <ul className="min-h-0 divide-y overflow-y-auto rounded-xl border">
               {draftLines.map((l) => (
-                <li key={l.serviceId} className="flex items-center gap-3 px-3 py-1.5">
+                <li key={`${l.serviceId}:${l.color}`} className="flex items-center gap-3 px-3 py-1.5">
                   <p className="min-w-0 flex-1 truncate text-sm">
-                    <span className="font-medium">{l.name}</span>
+                    <span className="font-medium">{l.name}</span>{" "}
+                    <GarmentColorMark color={l.color} />
                     <span className="ml-1.5 font-mono text-xs text-muted-foreground">{formatMoney(l.unitPriceCents)}</span>
                   </p>
                   <div className="flex items-center rounded-lg border">
                     <button
                       type="button"
-                      onClick={() => setQty(l.serviceId, l.qty - 1)}
+                      onClick={() => setQty(l.serviceId, l.color, l.qty - 1)}
                       aria-label={`Quitar una unidad de ${l.name}`}
                       className={cn("inline-flex size-8 items-center justify-center rounded-md hover:bg-muted md:size-6", FOCUS)}
                     >
@@ -120,7 +127,7 @@ export function TicketPanel({
                     <span className="w-7 text-center font-mono text-xs">{l.qty}</span>
                     <button
                       type="button"
-                      onClick={() => setQty(l.serviceId, l.qty + 1)}
+                      onClick={() => setQty(l.serviceId, l.color, l.qty + 1)}
                       aria-label={`Agregar una unidad de ${l.name}`}
                       className={cn("inline-flex size-8 items-center justify-center rounded-md hover:bg-muted md:size-6", FOCUS)}
                     >
@@ -174,7 +181,7 @@ export function TicketPanel({
             </button>
             <button
               type="button"
-              onClick={() => setPickingDate(true)}
+              onClick={() => (draft.express ? setPickingExpress(true) : setPickingDate(true))}
               disabled={draft.express === null}
               aria-label={deliveryOk ? `Entrega: ${formatDeliveryLong(draft.deliveryDate)}` : "Elegir fecha de entrega"}
               className={cn(
@@ -240,7 +247,7 @@ export function TicketPanel({
           <Button
             size="lg"
             className="mt-2.5 w-full rounded-xl short:mt-0 short:flex-1"
-            disabled={draftLines.length === 0 || !customer || !deliveryReady || busy}
+            disabled={draftLines.length === 0 || !customer || !deliveryOk || busy}
             onClick={() => {
               setCheckoutError(null);
               setConfirming(true);
@@ -271,10 +278,15 @@ export function TicketPanel({
       <ReceiptDialog order={receipt} onClose={() => setReceipt(null)} />
       <DeliveryDateDialog
         open={pickingDate}
-        value={deliveryOk ? draft.deliveryDate : ""}
-        express={draft.express === true}
+        value={draft.express === false ? draft.deliveryDate : ""}
         onSelect={(deliveryDate) => updateDraft({ deliveryDate })}
         onClose={() => setPickingDate(false)}
+      />
+      <ExpressDeliveryDialog
+        open={pickingExpress}
+        value={draft.deliveryDate}
+        onSelect={(deliveryDate) => updateDraft({ express: true, deliveryDate })}
+        onClose={() => setPickingExpress(false)}
       />
     </aside>
   );

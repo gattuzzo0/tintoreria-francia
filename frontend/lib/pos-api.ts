@@ -18,7 +18,7 @@ export type CreateOrderBody = {
   payment: PaymentMethod;
   branch: Branch;
   notes: string;
-  lines: { serviceId: string; qty: number }[];
+  lines: { serviceId: string; qty: number; color: string }[];
 };
 
 export type ServiceInput = { name: string; category: Category; unit: Unit; priceCents: number };

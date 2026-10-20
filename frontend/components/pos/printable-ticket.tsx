@@ -1,4 +1,5 @@
 import { QRCodeSVG } from "qrcode.react";
+import { garmentColor } from "@/lib/garment-colors";
 import { getBranchInfo } from "@/lib/branches";
 import { formatDeliveryLong } from "@/lib/delivery";
 import { formatMoney, PAYMENT_LABEL, type Customer, type Order } from "@/lib/pos-data";
@@ -8,7 +9,6 @@ const STORE_INFO = {
   tagline: "Lavado en seco · Planchado · Cuidado textil",
   legalName: "Servicios Textiles del Valle S.A. de C.V.",
   rfc: "STV190312KQ4",
-  hours: "Lun–Sáb 8:00–20:00 · Dom 9:00–14:00",
 };
 
 const Sep = () => <hr className="my-3 border-0 border-t border-dashed border-foreground/30" />;
@@ -70,11 +70,14 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
         <span>Importe</span>
       </div>
       <ul className="mt-1 flex flex-col gap-1.5">
-        {order.lines.map((l) => (
-          <li key={l.serviceId}>
+        {order.lines.map((l) => {
+          const color = garmentColor(l.color);
+          return (
+          <li key={`${l.serviceId}:${l.color}`}>
             <div className="flex justify-between gap-3">
               <span>
                 {l.qty} {l.unit} · {l.name}
+                {color ? ` · ${color.label}` : ""}
               </span>
               <span>{formatMoney(l.unitPriceCents * l.qty)}</span>
             </div>
@@ -82,7 +85,8 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
               {l.qty} × {formatMoney(l.unitPriceCents)}
             </p>
           </li>
-        ))}
+          );
+        })}
       </ul>
       <p className="mt-2">{items} artículos recibidos</p>
 
@@ -124,7 +128,7 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
       <footer className="flex flex-col gap-1 text-center">
         <p>Prendas no reclamadas en 30 días causan cargo por resguardo.</p>
         <p>No nos hacemos responsables por objetos olvidados en las prendas.</p>
-        <p>{STORE_INFO.hours}</p>
+        {branchInfo?.hours ? <p>{branchInfo.hours}</p> : null}
         <p className="mt-1 font-semibold">¡Gracias por su preferencia!</p>
       </footer>
     </article>

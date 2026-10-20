@@ -5,6 +5,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { ApiHttpError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
+import { lineKey, parseLineKey } from "@/lib/garment-colors";
 import { addOrderNote, advanceOrderStatus, createCustomer, createOrder, fetchCustomers, fetchOrders, fetchServices } from "@/lib/pos-api";
 import {
   computeTotals,
@@ -47,8 +48,9 @@ type PosContextValue = {
   services: Service[];
   orders: Order[];
   customers: Customer[];
-  addItem: (id: string) => void;
-  setQty: (id: string, qty: number) => void;
+  addItem: (id: string, color: string) => void;
+  setQty: (id: string, color: string, qty: number) => void;
+  clearService: (id: string) => void;
   updateDraft: (patch: Partial<Draft>) => void;
   clearDraft: () => void;
   checkout: () => Promise<Order | null>;
@@ -119,29 +121,50 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const draftLines = useMemo(
-    () =>
-      services.flatMap((s): OrderLine[] => {
-        const qty = draft.quantities[s.id] ?? 0;
-        return qty > 0 ? [{ serviceId: s.id, name: s.name, unit: s.unit, unitPriceCents: s.priceCents, qty }] : [];
-      }),
-    [services, draft.quantities],
-  );
+  const draftLines = useMemo(() => {
+    const lines: OrderLine[] = [];
+    for (const [key, qty] of Object.entries(draft.quantities)) {
+      const parsed = parseLineKey(key);
+      if (!parsed || qty <= 0) continue;
+      const service = services.find((s) => s.id === parsed.serviceId);
+      if (!service) continue;
+      lines.push({
+        serviceId: service.id,
+        name: service.name,
+        unit: service.unit,
+        unitPriceCents: service.priceCents,
+        qty,
+        color: parsed.color,
+      });
+    }
+    return lines;
+  }, [services, draft.quantities]);
   const draftTotals = useMemo(() => computeTotals(draftLines, draft.express === true), [draftLines, draft.express]);
 
-  const setQty = useCallback((id: string, qty: number) => {
+  const setQty = useCallback((id: string, color: string, qty: number) => {
+    const key = lineKey(id, color);
     setDraft((d) => {
       const quantities = { ...d.quantities };
-      if (qty <= 0) delete quantities[id];
-      else quantities[id] = Math.min(999, Math.floor(qty));
+      if (qty <= 0) delete quantities[key];
+      else quantities[key] = Math.min(999, Math.floor(qty));
       return { ...d, quantities };
     });
   }, []);
 
-  const addItem = useCallback((id: string) => {
+  const clearService = useCallback((id: string) => {
+    const prefix = `${id}\t`;
+    setDraft((d) => {
+      const quantities = { ...d.quantities };
+      for (const key of Object.keys(quantities)) if (key.startsWith(prefix)) delete quantities[key];
+      return { ...d, quantities };
+    });
+  }, []);
+
+  const addItem = useCallback((id: string, color: string) => {
+    const key = lineKey(id, color);
     setDraft((d) => ({
       ...d,
-      quantities: { ...d.quantities, [id]: Math.min(999, (d.quantities[id] ?? 0) + 1) },
+      quantities: { ...d.quantities, [key]: Math.min(999, (d.quantities[key] ?? 0) + 1) },
     }));
   }, []);
 
@@ -163,7 +186,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       payment: draft.payment,
       branch,
       notes: sanitizeText(draft.notes, NOTES_MAX).trim(),
-      lines: draftLines.map((l) => ({ serviceId: l.serviceId, qty: l.qty })),
+      lines: draftLines.map((l) => ({ serviceId: l.serviceId, qty: l.qty, color: l.color })),
     };
     const key = idempotencyKey.current;
     const order = await withAuth((t) => createOrder(t, body, key));
@@ -214,6 +237,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       customers,
       addItem,
       setQty,
+      clearService,
       updateDraft,
       clearDraft,
       checkout,
@@ -224,7 +248,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       setServices,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, orders, customers, addItem, setQty, updateDraft, clearDraft, checkout, advanceOrder, addNote, addCustomer, getCustomer, setServices],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, orders, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addCustomer, getCustomer, setServices],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;
