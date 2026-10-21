@@ -45,3 +45,27 @@ def get_cors_extra_origins() -> list[str]:
 
 def is_database_configured() -> bool:
     return bool(get_supabase_url() and get_supabase_service_role_key())
+
+
+@lru_cache
+def get_r2_account_id() -> str | None:
+    return _env("R2_ACCOUNT_ID")
+
+
+@lru_cache
+def get_r2_access_key_id() -> str | None:
+    return _env("R2_ACCESS_KEY_ID")
+
+
+@lru_cache
+def get_r2_secret_access_key() -> str | None:
+    return _env("R2_SECRET_ACCESS_KEY")
+
+
+@lru_cache
+def get_r2_bucket_name() -> str | None:
+    return _env("R2_BUCKET_NAME")
+
+
+def is_storage_configured() -> bool:
+    return bool(get_r2_account_id() and get_r2_access_key_id() and get_r2_secret_access_key() and get_r2_bucket_name())

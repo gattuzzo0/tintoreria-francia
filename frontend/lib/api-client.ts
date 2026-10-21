@@ -45,7 +45,7 @@ async function handleJsonError(res: Response): Promise<never> {
   } catch {
     if (text.trim()) msg = text.trim().slice(0, 280);
   }
-  if (res.status >= 500 && (msg === "Internal Server Error" || res.status >= 502)) msg += "." + backendHint();
+  if ((res.status >= 502 && msg === res.statusText) || msg === "Internal Server Error") msg += "." + backendHint();
   throw new ApiHttpError(msg, res.status);
 }
 

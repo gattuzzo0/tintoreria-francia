@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { readyMessage, whatsappSendUrl } from "@/lib/whatsapp";
 import { GarmentColorMark } from "./color-revolver";
 import { OrderNotesDialog } from "./order-notes-dialog";
+import { OrderPhoto } from "./order-photo";
 import { usePos } from "./pos-provider";
 
 const COLUMNS: OrderStatus[] = ["recibido", "proceso", "listo", "entregado"];
@@ -134,7 +135,7 @@ export function OrdersBoard() {
                               <Zap className="size-3" aria-hidden /> Exprés
                             </span>
                           )}
-                          {(o.notes || o.staffNotes.length > 0) && (
+                          {(o.notes || o.photoId || (o.photoIds?.length ?? 0) > 0 || o.staffNotes.length > 0) && (
                             <button
                               type="button"
                               aria-label={`Ver notas de la orden ${o.folio}`}
@@ -192,6 +193,13 @@ export function OrdersBoard() {
                           </ul>
                         )}
                         {o.notes && <p className="mt-1 text-xs text-muted-foreground italic">{o.notes}</p>}
+                        {isOpen && (o.photoIds?.length ? o.photoIds : o.photoId ? [o.photoId] : []).length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(o.photoIds?.length ? o.photoIds : [o.photoId as string]).map((id) => (
+                              <OrderPhoto key={id} photoId={id} className="h-20 w-20 rounded-lg object-cover" />
+                            ))}
+                          </div>
+                        )}
                         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                           <span className="font-mono text-sm">{formatMoney(o.totalCents)}</span>
                           <span

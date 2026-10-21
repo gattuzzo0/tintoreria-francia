@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_cors_extra_origins
+from api.photo_file_cors import PhotoFileCorsMiddleware
 from api.router import api_router
 
 app = FastAPI(title="Tintorería Francia API", version="0.1.0")
@@ -24,6 +25,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Después de CORSMiddleware: en la respuesta corre al final y le quita las credenciales al 302.
+app.add_middleware(PhotoFileCorsMiddleware)
 
 app.include_router(api_router, prefix="/api")
 

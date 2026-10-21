@@ -4,7 +4,45 @@
   "builds": [{ "src": "server.py", "use": "@vercel/python" }],
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/api/orders/photos/:id/file",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" },
+        { "key": "CDN-Cache-Control", "value": "public, s-maxage=86400" }
+      ]
+    },
+    {
+      "source": "/api/orders/photos/:id/url",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://tintoreria-francia.vercel.app" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Authorization, Content-Type, Idempotency-Key" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
+      ]
+    },
+    {
+      "source": "/api/:a/:b/:c",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://tintoreria-francia.vercel.app" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Authorization, Content-Type, Idempotency-Key" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
+      ]
+    },
+    {
+      "source": "/api/:a/:b",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "https://tintoreria-francia.vercel.app" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Authorization, Content-Type, Idempotency-Key" },
+        { "key": "Access-Control-Allow-Credentials", "value": "true" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
+      ]
+    },
+    {
+      "source": "/api/:a",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "https://tintoreria-francia.vercel.app" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
