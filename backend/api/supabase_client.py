@@ -14,7 +14,20 @@ def get_supabase() -> Client:
     key = get_supabase_service_role_key()
     if not url or not key:
         raise RuntimeError("Supabase URL o service role key no configurados")
-    return create_client(url, key, options=ClientOptions(schema=DB_SCHEMA))
+    # ponytail: postgrest default http2=True. Idle HTTP/2 dies on long-lived uvicorn
+    # ("Server disconnected" → 503). Vercel process is short, so prod hides it.
+    return create_client(
+        url,
+        key,
+        options=ClientOptions(
+            schema=DB_SCHEMA,
+            httpx_client=httpx.Client(
+                http2=False,
+                timeout=120,
+                limits=httpx.Limits(max_keepalive_connections=0),
+            ),
+        ),
+    )
 
 
 def call_rpc(fn: str, payload: dict) -> object:

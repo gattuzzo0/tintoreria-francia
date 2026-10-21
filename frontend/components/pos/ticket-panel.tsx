@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, Minus, Plus, Trash2, Zap } from "lucide-react";
+import { useRef, useState } from "react";
+import { CalendarDays, Camera, Loader2, Minus, Plus, Trash2, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deliveryOn, formatDeliveryLong, formatDeliveryShort, isAllowedDelivery, REGULAR_MIN_DAYS } from "@/lib/delivery";
+import { deleteOrderPhoto, uploadOrderPhoto } from "@/lib/pos-api";
 import { formatMoney, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NOTES_MAX, sanitizeText } from "@/lib/validation";
@@ -12,6 +13,7 @@ import { CheckoutConfirmDialog } from "./checkout-confirm-dialog";
 import { CustomerLookup } from "./customer-lookup";
 import { DeliveryDateDialog, ExpressDeliveryDialog } from "./delivery-date-dialog";
 import { ReceiptDialog } from "./receipt-dialog";
+import { OrderPhoto, PhotoZoom } from "./order-photo";
 import { usePos } from "./pos-provider";
 
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
@@ -26,8 +28,13 @@ export function TicketPanel({
   lookupKey?: number;
   onSaleComplete?: () => void;
 }) {
-  const { draft, draftLines, draftTotals, orders, setQty, updateDraft, checkout, getCustomer } = usePos();
+  const { draft, draftLines, draftTotals, orders, setQty, updateDraft, checkout, getCustomer, withAuth } = usePos();
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const customer = draft.customerId ? getCustomer(draft.customerId) : undefined;
+  const photoOk = Boolean(draft.customerId) && draftLines.length > 0;
 
   const [receipt, setReceipt] = useState<Order | null>(null);
   const [busy, setBusy] = useState(false);
@@ -206,18 +213,86 @@ export function TicketPanel({
               {draft.notes.length}/{NOTES_MAX}
             </span>
           </div>
-          <textarea
-            id="notes"
-            rows={2}
-            maxLength={NOTES_MAX}
-            value={draft.notes}
-            onChange={(e) => updateDraft({ notes: sanitizeText(e.target.value, NOTES_MAX) })}
-            placeholder="Manchas, botones faltantes, almidón…"
-            className={cn(
-              "resize-none rounded-xl border border-input bg-background px-3 py-2 text-base placeholder:text-muted-foreground sm:text-sm short:h-9 short:[scrollbar-width:none]",
-              FOCUS,
-            )}
-          />
+          <div className="flex items-start gap-2">
+            <textarea
+              id="notes"
+              rows={2}
+              maxLength={NOTES_MAX}
+              value={draft.notes}
+              onChange={(e) => updateDraft({ notes: sanitizeText(e.target.value, NOTES_MAX) })}
+              placeholder="Manchas, botones faltantes, almidón…"
+              className={cn(
+                "min-w-0 flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-base placeholder:text-muted-foreground sm:text-sm short:h-9 short:[scrollbar-width:none]",
+                FOCUS,
+              )}
+            />
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              disabled={!photoOk || photoBusy}
+              aria-label="Tomar foto o subir imagen"
+              title={photoOk ? "Tomar foto o subir imagen" : "Elige un cliente y agrega una prenda"}
+              className={cn(
+                "inline-flex size-10 shrink-0 items-center justify-center rounded-xl border bg-card text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+                FOCUS,
+              )}
+            >
+              {photoBusy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Camera className="size-4" aria-hidden />}
+            </button>
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file || !draft.customerId || draftLines.length === 0) return;
+                const previous = draft.photoId;
+                setPhotoBusy(true);
+                setPhotoError(null);
+                void withAuth((token) => uploadOrderPhoto(token, file))
+                  .then(({ id }) => {
+                    if (previous) void withAuth((token) => deleteOrderPhoto(token, previous)).catch(() => {});
+                    setPhotoUrl((current) => {
+                      if (current) URL.revokeObjectURL(current);
+                      return URL.createObjectURL(file);
+                    });
+                    updateDraft({ photoId: id });
+                  })
+                  .catch((err: unknown) => {
+                    setPhotoError(err instanceof Error ? err.message : "No se pudo subir la foto.");
+                  })
+                  .finally(() => setPhotoBusy(false));
+              }}
+            />
+          </div>
+          {(photoUrl || draft.photoId) && (
+            <div className="relative w-fit">
+              {photoUrl ? (
+                <PhotoZoom src={photoUrl} className="h-16 w-16 rounded-lg object-cover" />
+              ) : (
+                draft.photoId && <OrderPhoto photoId={draft.photoId} />
+              )}
+              <button
+                type="button"
+                aria-label="Quitar foto"
+                onClick={() => {
+                  const id = draft.photoId;
+                  updateDraft({ photoId: null });
+                  setPhotoUrl((current) => {
+                    if (current) URL.revokeObjectURL(current);
+                    return null;
+                  });
+                  if (id) void withAuth((token) => deleteOrderPhoto(token, id)).catch(() => {});
+                }}
+                className="absolute -top-1.5 -right-1.5 z-10 inline-flex size-5 items-center justify-center rounded-full bg-foreground text-background"
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </div>
+          )}
+          {photoError && <p className="text-xs text-destructive">{photoError}</p>}
         </div>
 
       </div>

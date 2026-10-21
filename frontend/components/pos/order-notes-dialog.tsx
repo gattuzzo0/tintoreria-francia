@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, X } from "lucide-react";
+import { Camera, CircleAlert, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NOTES_MAX, sanitizeText } from "@/lib/validation";
+import { OrderPhoto } from "./order-photo";
 import { usePos } from "./pos-provider";
 
 export function OrderNotesDialog({ order, onClose }: { order: Order | null; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const { addNote, getCustomer } = usePos();
+  const { addNote, addOrderPhoto, getCustomer } = usePos();
+  const photoInput = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,6 +47,7 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
       onClose={() => {
         setText("");
         setError(null);
+        setPhotoBusy(false);
         onClose();
       }}
       onClick={(e) => e.target === ref.current && ref.current?.close()}
@@ -79,6 +83,15 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
                   Observaciones al recibir · {formatDate(order.createdAt)}
                 </p>
                 <p className="text-sm">{order.notes}</p>
+                {order.photoId && <OrderPhoto photoId={order.photoId} className="mt-2 h-24 w-24 rounded-lg object-cover" />}
+              </div>
+            )}
+            {!order.notes && order.photoId && (
+              <div className="rounded-xl border bg-muted/60 px-3 py-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  Observaciones al recibir · {formatDate(order.createdAt)}
+                </p>
+                <OrderPhoto photoId={order.photoId} className="mt-2 h-24 w-24 rounded-lg object-cover" />
               </div>
             )}
             {order.staffNotes.map((n) => (
@@ -89,7 +102,7 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
                 <p className="text-sm whitespace-pre-wrap">{n.body}</p>
               </div>
             ))}
-            {!order.notes && order.staffNotes.length === 0 && (
+            {!order.notes && !order.photoId && order.staffNotes.length === 0 && (
               <p className="py-4 text-center text-sm text-muted-foreground">Esta orden aún no tiene notas.</p>
             )}
           </div>
@@ -103,19 +116,56 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
                 {text.length}/{NOTES_MAX}
               </span>
             </div>
-            <textarea
-              id="staff-note"
-              rows={3}
-              autoFocus
-              maxLength={NOTES_MAX}
-              value={text}
-              onChange={(e) => setText(sanitizeText(e.target.value, NOTES_MAX))}
-              placeholder="Se rompió un botón, mancha que no salió…"
-              className={cn(
-                "resize-none rounded-xl border border-input bg-background px-3 py-2 text-base placeholder:text-muted-foreground sm:text-sm",
-                "outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
-              )}
-            />
+            <div className="flex items-start gap-2">
+              <textarea
+                id="staff-note"
+                rows={3}
+                autoFocus
+                maxLength={NOTES_MAX}
+                value={text}
+                onChange={(e) => setText(sanitizeText(e.target.value, NOTES_MAX))}
+                placeholder="Se rompió un botón, mancha que no salió…"
+                className={cn(
+                  "min-w-0 flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-base placeholder:text-muted-foreground sm:text-sm",
+                  "outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => photoInput.current?.click()}
+                disabled={photoBusy || busy}
+                aria-label="Tomar foto o subir imagen"
+                title="Tomar foto o subir imagen"
+                className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border bg-card text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {photoBusy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Camera className="size-4" aria-hidden />}
+              </button>
+              <input
+                ref={photoInput}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file || !order) return;
+                  setPhotoBusy(true);
+                  setError(null);
+                  void addOrderPhoto(order.folio, file)
+                    .catch((err: unknown) => {
+                      setError(err instanceof Error ? err.message : "No se pudo subir la foto.");
+                    })
+                    .finally(() => setPhotoBusy(false));
+                }}
+              />
+            </div>
+            {(order.photoIds ?? []).length > 1 && (
+              <div className="flex flex-wrap gap-2">
+                {(order.photoIds ?? []).slice(1).map((id) => (
+                  <OrderPhoto key={id} photoId={id} className="h-16 w-16 rounded-lg object-cover" />
+                ))}
+              </div>
+            )}
             {error && (
               <p role="alert" className="text-xs text-destructive">
                 {error}

@@ -125,6 +125,22 @@ create table if not exists tintoreria_francia.order_notes (
 
 create index if not exists idx_tintoreria_francia_order_notes_order_folio
   on tintoreria_francia.order_notes (order_folio);
+
+-- Foto de observaciones. El archivo vive en R2; aquí solo la llave.
+create table if not exists tintoreria_francia.order_photos (
+  id uuid primary key default gen_random_uuid(),
+  order_folio integer references tintoreria_francia.orders (folio) on delete cascade,
+  staff_user_id uuid references auth.users (id) on delete set null,
+  object_key text not null unique,
+  content_type text not null check (content_type in ('image/jpeg', 'image/webp')),
+  byte_size integer not null check (byte_size between 1 and 4000000),
+  width integer check (width between 1 and 1080),
+  height integer check (height between 1 and 1440),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_tintoreria_francia_order_photos_folio
+  on tintoreria_francia.order_photos (order_folio);
 create index if not exists idx_tintoreria_francia_orders_created_at on tintoreria_francia.orders (created_at desc);
 create index if not exists idx_tintoreria_francia_orders_customer_id on tintoreria_francia.orders (customer_id);
 create index if not exists idx_tintoreria_francia_order_lines_order_folio on tintoreria_francia.order_lines (order_folio);
@@ -146,6 +162,8 @@ alter table tintoreria_francia.order_status_events enable row level security;
 alter table tintoreria_francia.order_status_events force row level security;
 alter table tintoreria_francia.order_notes enable row level security;
 alter table tintoreria_francia.order_notes force row level security;
+alter table tintoreria_francia.order_photos enable row level security;
+alter table tintoreria_francia.order_photos force row level security;
 
 revoke all on schema tintoreria_francia from anon, authenticated;
 revoke all on all tables in schema tintoreria_francia from anon, authenticated;

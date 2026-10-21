@@ -42,6 +42,10 @@ export type Order = {
   status: OrderStatus;
   /** Observaciones capturadas al recibir la orden. */
   notes: string;
+  /** Primera foto (recepción). null si no hay. */
+  photoId?: string | null;
+  /** Todas las fotos de la orden, la de recepción primero. */
+  photoIds?: string[];
   /** Notas del staff durante el proceso, en orden de captura. */
   staffNotes: OrderNote[];
   createdAt: string;

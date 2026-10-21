@@ -106,6 +106,9 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
       <p className="uppercase tracking-[0.14em]">Entrega {order.express ? "exprés" : "regular"}</p>
       <p className="font-semibold">{deliveryText}</p>
       {order.notes && <p className="mt-1">Obs.: {order.notes}</p>}
+      {(order.photoIds?.length ?? (order.photoId ? 1 : 0)) > 0 && (
+        <p className="mt-1">{(order.photoIds?.length ?? 1) > 1 ? "Fotos adjuntas" : "Foto adjunta"}</p>
+      )}
 
       <Sep />
       <div className="flex flex-col items-center gap-2 text-center">

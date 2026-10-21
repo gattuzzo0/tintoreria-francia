@@ -6,7 +6,18 @@ import { ApiHttpError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
 import { lineKey, parseLineKey } from "@/lib/garment-colors";
-import { addOrderNote, advanceOrderStatus, createCustomer, createOrder, fetchCustomers, fetchOrders, fetchServices } from "@/lib/pos-api";
+import {
+  addOrderNote,
+  attachOrderPhoto,
+  deleteOrderPhoto,
+  uploadOrderPhoto,
+  advanceOrderStatus,
+  createCustomer,
+  createOrder,
+  fetchCustomers,
+  fetchOrders,
+  fetchServices,
+} from "@/lib/pos-api";
 import {
   computeTotals,
   type Customer,
@@ -27,6 +38,7 @@ export type Draft = {
   deliveryDate: string;
   payment: PaymentMethod;
   notes: string;
+  photoId: string | null;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -36,6 +48,7 @@ const EMPTY_DRAFT: Draft = {
   deliveryDate: "",
   payment: "tarjeta",
   notes: "",
+  photoId: null,
 };
 
 type PosContextValue = {
@@ -56,6 +69,7 @@ type PosContextValue = {
   checkout: () => Promise<Order | null>;
   advanceOrder: (folio: number, status: OrderStatus) => Promise<void>;
   addNote: (folio: number, body: string) => Promise<void>;
+  addOrderPhoto: (folio: number, file: File) => Promise<void>;
   addCustomer: (data: { name: string; phone: string }) => Promise<Customer>;
   getCustomer: (id: string) => Customer | undefined;
   setServices: (services: Service[]) => void;
@@ -186,6 +200,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       payment: draft.payment,
       branch,
       notes: sanitizeText(draft.notes, NOTES_MAX).trim(),
+      ...(draft.photoId ? { photoId: draft.photoId } : {}),
       lines: draftLines.map((l) => ({ serviceId: l.serviceId, qty: l.qty, color: l.color })),
     };
     const key = idempotencyKey.current;
@@ -206,6 +221,22 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const addNote = useCallback(
     async (folio: number, body: string) => {
       const updated = await withAuth((t) => addOrderNote(t, folio, body));
+      setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
+    },
+    [withAuth],
+  );
+
+  const addOrderPhoto = useCallback(
+    async (folio: number, file: File) => {
+      const updated = await withAuth(async (t) => {
+        const { id } = await uploadOrderPhoto(t, file);
+        try {
+          return await attachOrderPhoto(t, folio, id);
+        } catch (err) {
+          await deleteOrderPhoto(t, id).catch(() => {});
+          throw err;
+        }
+      });
       setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
     },
     [withAuth],
@@ -243,12 +274,13 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       checkout,
       advanceOrder,
       addNote,
+      addOrderPhoto,
       addCustomer,
       getCustomer,
       setServices,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, orders, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addCustomer, getCustomer, setServices],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, orders, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, addCustomer, getCustomer, setServices],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;
