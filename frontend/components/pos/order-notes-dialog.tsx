@@ -9,7 +9,15 @@ import { NOTES_MAX, sanitizeText } from "@/lib/validation";
 import { OrderPhoto } from "./order-photo";
 import { usePos } from "./pos-provider";
 
-export function OrderNotesDialog({ order, onClose }: { order: Order | null; onClose: () => void }) {
+export function OrderNotesDialog({
+  order,
+  onClose,
+  onUpdated,
+}: {
+  order: Order | null;
+  onClose: () => void;
+  onUpdated?: (order: Order) => void;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   const { addNote, addOrderPhoto, getCustomer } = usePos();
   const photoInput = useRef<HTMLInputElement>(null);
@@ -32,7 +40,8 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
     setBusy(true);
     setError(null);
     try {
-      await addNote(order.folio, body);
+      const updated = await addNote(order.folio, body);
+      onUpdated?.(updated);
       setText("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar la nota.");
@@ -152,6 +161,7 @@ export function OrderNotesDialog({ order, onClose }: { order: Order | null; onCl
                   setPhotoBusy(true);
                   setError(null);
                   void addOrderPhoto(order.folio, file)
+                    .then((updated) => onUpdated?.(updated))
                     .catch((err: unknown) => {
                       setError(err instanceof Error ? err.message : "No se pudo subir la foto.");
                     })

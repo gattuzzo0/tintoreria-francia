@@ -28,7 +28,7 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
   const { orders } = usePos();
   const { isAdmin, email, fullName, signOut } = useAuth();
   const branch = useSyncExternalStore(subscribeNoop, getBranchClient, getBranchServer);
-  const readyCount = orders.filter((o) => o.status === "listo").length;
+  const readyCount = orders.filter((o) => o.status === "listo" && o.branch === branch).length;
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background md:bg-background/85 md:backdrop-blur-md">

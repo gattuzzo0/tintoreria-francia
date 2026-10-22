@@ -5,6 +5,7 @@ import { Mail, Phone, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiHttpError } from "@/lib/api-client";
 import { formatMoney } from "@/lib/pos-data";
+import { readBranch } from "@/lib/branches";
 import { cn } from "@/lib/utils";
 import {
   PHONE_DIGITS,
@@ -37,7 +38,8 @@ export function CustomersView({
   prefillPhone: string | null;
   onReturnToSale: () => void;
 }) {
-  const { customers, orders, addCustomer, updateDraft } = usePos();
+  const { customers, orders, delivered, addCustomer, updateDraft } = usePos();
+  const openBranch = readBranch();
   const fromSale = Boolean(prefillPhone);
 
   const [query, setQuery] = useState("");
@@ -219,9 +221,10 @@ export function CustomersView({
               </tr>
             ) : (
               filtered.map((c) => {
-                const mine = orders.filter((o) => o.customerId === c.id);
+                const mine = orders.filter((o) => o.customerId === c.id && o.branch === openBranch);
+                const deliveredMine = delivered.filter((o) => o.customerId === c.id && o.branch === openBranch);
                 const activeCount = mine.filter((o) => o.status !== "entregado").length;
-                const spent = mine.reduce((s, o) => s + o.totalCents, 0);
+                const spent = mine.reduce((s, o) => s + o.totalCents, 0) + deliveredMine.reduce((s, o) => s + o.totalCents, 0);
                 return (
                   <tr key={c.id} className={cn(c.id === newId && "bg-accent/60")}>
                     <td className="px-4 py-3">
@@ -250,7 +253,7 @@ export function CustomersView({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="font-mono">{mine.length}</span>
+                      <span className="font-mono">{mine.length + deliveredMine.length}</span>
                       <span className="block text-xs text-muted-foreground">{activeCount} activas</span>
                     </td>
                     <td className="hidden px-4 py-3 text-right font-mono sm:table-cell">{formatMoney(spent)}</td>

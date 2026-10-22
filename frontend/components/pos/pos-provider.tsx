@@ -20,10 +20,12 @@ import {
   fetchDeliveryRates,
   fetchOrders,
   fetchServices,
+  type OrderBoard,
 } from "@/lib/pos-api";
 import {
   computeTotals,
   type Customer,
+  type DeliveredOrder,
   type Order,
   type OrderLine,
   type OrderStatus,
@@ -64,6 +66,7 @@ type PosContextValue = {
   services: Service[];
   rushRates: RushRates;
   orders: Order[];
+  delivered: DeliveredOrder[];
   customers: Customer[];
   addItem: (id: string, color: string) => void;
   setQty: (id: string, color: string, qty: number) => void;
@@ -72,9 +75,9 @@ type PosContextValue = {
   clearDraft: () => void;
   checkout: () => Promise<Order | null>;
   advanceOrder: (folio: number, status: OrderStatus) => Promise<void>;
-  addNote: (folio: number, body: string) => Promise<void>;
-  addOrderPhoto: (folio: number, file: File) => Promise<void>;
-  clearOrderPhotos: (folio: number) => Promise<void>;
+  addNote: (folio: number, body: string) => Promise<Order>;
+  addOrderPhoto: (folio: number, file: File) => Promise<Order>;
+  clearOrderPhotos: (folio: number) => Promise<Order>;
   addCustomer: (data: { name: string; phone: string }) => Promise<Customer>;
   getCustomer: (id: string) => Customer | undefined;
   setServices: (services: Service[]) => void;
@@ -95,6 +98,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const [services, setServicesState] = useState<Service[]>([]);
   const [rushRates, setRushRatesState] = useState<RushRates>(DEFAULT_RUSH_RATES);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [delivered, setDelivered] = useState<DeliveredOrder[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const idempotencyKey = useRef<string>(crypto.randomUUID());
 
@@ -125,10 +129,11 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     [withAuth],
   );
 
-  const applyData = useCallback(([s, c, o, rates]: [Service[], Customer[], Order[], RushRates]) => {
+  const applyData = useCallback(([s, c, board, rates]: [Service[], Customer[], OrderBoard, RushRates]) => {
     setServicesState(s);
     setCustomers(c);
-    setOrders(o);
+    setOrders(board.orders);
+    setDelivered(board.delivered);
     setRushRatesState(rates);
     setLoadError(null);
     setStatus("ready");
@@ -232,6 +237,21 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const advanceOrder = useCallback(
     async (folio: number, next: OrderStatus) => {
       const updated = await withAuth((t) => advanceOrderStatus(t, folio, next));
+      if (updated.status === "entregado") {
+        setOrders((prev) => prev.filter((o) => o.folio !== folio));
+        setDelivered((prev) => [
+          {
+            folio: updated.folio,
+            customerId: updated.customerId,
+            payment: updated.payment,
+            totalCents: updated.totalCents,
+            statusUpdatedAt: updated.statusUpdatedAt ?? "",
+            branch: updated.branch,
+          },
+          ...prev.filter((row) => row.folio !== folio),
+        ]);
+        return;
+      }
       setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
     },
     [withAuth],
@@ -241,6 +261,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     async (folio: number, body: string) => {
       const updated = await withAuth((t) => addOrderNote(t, folio, body));
       setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
+      return updated;
     },
     [withAuth],
   );
@@ -257,6 +278,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
         }
       });
       setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
+      return updated;
     },
     [withAuth],
   );
@@ -265,6 +287,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     async (folio: number) => {
       const updated = await withAuth((t) => deleteOrderPhotos(t, folio));
       setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
+      return updated;
     },
     [withAuth],
   );
@@ -294,6 +317,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       services,
       rushRates,
       orders,
+      delivered,
       customers,
       addItem,
       setQty,
@@ -311,7 +335,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       setRushRates,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, orders, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, getCustomer, setServices, setRushRates],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, orders, delivered, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, getCustomer, setServices, setRushRates],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;

@@ -2,7 +2,7 @@ import { ApiHttpError, apiFetch, apiUrl } from "./api-client";
 import type { Branch } from "./branches";
 import { prepareOrderPhoto } from "./prepare-order-photo";
 import type { RushRates } from "./delivery";
-import type { Category, Customer, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
+import type { Category, Customer, DeliveredOrder, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
 
 export type Me = {
   userId: string;
@@ -50,7 +50,11 @@ export const fetchCustomers = (token: string) => apiFetch<Customer[]>("/api/cust
 export const createCustomer = (token: string, body: { name: string; phone: string }) =>
   apiFetch<Customer>("/api/customers", token, { method: "POST", body });
 
-export const fetchOrders = (token: string) => apiFetch<Order[]>("/api/orders", token);
+export type OrderBoard = { orders: Order[]; delivered: DeliveredOrder[] };
+
+export const fetchOrders = (token: string) => apiFetch<OrderBoard>("/api/orders", token);
+
+export const fetchOrder = (token: string, folio: number) => apiFetch<Order>(`/api/orders/${folio}`, token);
 
 export const createOrder = (token: string, body: CreateOrderBody, idempotencyKey: string) =>
   apiFetch<Order>("/api/orders", token, { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });

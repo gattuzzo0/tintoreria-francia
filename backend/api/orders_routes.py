@@ -29,7 +29,7 @@ GARMENT_COLORS = frozenset(
 Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
-    "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, "
+    "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, status_updated_at, "
     "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
     "order_lines(service_id, name, unit, unit_price_cents, qty, color), "
     "order_notes(id, body, created_at)"
@@ -132,6 +132,15 @@ class OrderLineOut(BaseModel):
     color: str = ""
 
 
+class DeliveredOut(BaseModel):
+    folio: int
+    customerId: str
+    payment: PaymentMethod
+    totalCents: int
+    statusUpdatedAt: str
+    branch: Branch | None = None
+
+
 class OrderOut(BaseModel):
     folio: int
     customerId: str
@@ -146,12 +155,18 @@ class OrderOut(BaseModel):
     photoIds: list[str] = []
     staffNotes: list[OrderNoteOut]
     createdAt: str
+    statusUpdatedAt: str
     baseCents: int
     surchargeCents: int
     surchargePct: int | None = None
     subtotalCents: int
     taxCents: int
     totalCents: int
+
+
+class OrderListOut(BaseModel):
+    orders: list[OrderOut]
+    delivered: list[DeliveredOut]
 
 
 def _iso(value) -> str:
@@ -196,6 +211,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
             for n in sorted(row.get("order_notes") or [], key=lambda n: int(n["id"]))
         ],
         createdAt=created.isoformat() if hasattr(created, "isoformat") else str(created),
+        statusUpdatedAt=_iso(row["status_updated_at"]),
         baseCents=int(row["base_cents"]),
         surchargeCents=int(row["surcharge_cents"]),
         surchargePct=int(row["surcharge_pct"]) if row.get("surcharge_pct") is not None else None,
@@ -205,8 +221,10 @@ def _row_to_order_out(row: dict) -> OrderOut:
     )
 
 
-def _query_orders(columns: str, folio: int | None):
+def _query_orders(columns: str, folio: int | None, *, exclude_status: str | None = None):
     query = get_supabase().table("orders").select(columns)
+    if exclude_status:
+        query = query.neq("status", exclude_status)
     if folio is None:
         return query.order("folio", desc=True).limit(ORDERS_LIMIT).execute()
     return query.eq("folio", folio).limit(1).execute()
@@ -214,10 +232,22 @@ def _query_orders(columns: str, folio: int | None):
 
 def _fetch_orders():
     try:
-        return _query_orders(_SELECT, None)
+        return _query_orders(_SELECT, None, exclude_status="entregado")
     except Exception:
         logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
-        return _query_orders(_SELECT_PLAIN, None)
+        return _query_orders(_SELECT_PLAIN, None, exclude_status="entregado")
+
+
+def _fetch_delivered():
+    return (
+        get_supabase()
+        .table("orders")
+        .select("folio, customer_id, payment_method, total_cents, status_updated_at, branch")
+        .eq("status", "entregado")
+        .order("folio", desc=True)
+        .limit(ORDERS_LIMIT)
+        .execute()
+    )
 
 
 def _fetch_order(folio: int):
@@ -259,14 +289,39 @@ async def _get_order_or_404(folio: int) -> dict:
     return res.data[0]
 
 
-@orders_router.get("", response_model=list[OrderOut])
+def _delivered_out(row: dict) -> DeliveredOut:
+    return DeliveredOut(
+        folio=int(row["folio"]),
+        customerId=str(row["customer_id"]),
+        payment=row["payment_method"],
+        totalCents=int(row["total_cents"]),
+        statusUpdatedAt=_iso(row["status_updated_at"]),
+        branch=row.get("branch"),
+    )
+
+
+def _fetch_board():
+    active = _fetch_orders()
+    delivered = _fetch_delivered()
+    return active, delivered
+
+
+@orders_router.get("", response_model=OrderListOut)
 async def list_orders(_staff: dict = Depends(require_pos_staff)):
     try:
-        res = await asyncio.to_thread(_fetch_orders)
+        active, delivered = await asyncio.to_thread(_fetch_board)
     except Exception:
         logger.exception("list_orders falló")
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudieron leer las órdenes") from None
-    return [_row_to_order_out(r) for r in res.data or []]
+    return OrderListOut(
+        orders=[_row_to_order_out(r) for r in active.data or []],
+        delivered=[_delivered_out(r) for r in delivered.data or []],
+    )
+
+
+@orders_router.get("/{folio}", response_model=OrderOut)
+async def get_order(folio: int, _staff: dict = Depends(require_pos_staff)):
+    return _row_to_order_out(await _get_order_or_404(folio))
 
 
 @orders_router.post("", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
