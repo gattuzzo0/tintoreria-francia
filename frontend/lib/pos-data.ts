@@ -51,6 +51,8 @@ export type Order = {
   createdAt: string;
   baseCents: number;
   surchargeCents: number;
+  /** null en órdenes de antes de 000011: el ticket asume 30% si son exprés. */
+  surchargePct?: number | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
@@ -60,14 +62,20 @@ export const CATEGORIES: Category[] = ["Prendas", "Trajes", "Hogar", "Especiales
 export const UNITS: Unit[] = ["pza", "kg", "par"];
 
 export const TAX_RATE = 0.16;
-export const EXPRESS_RATE = 0.3;
 /** Centavos enteros; misma fórmula que tintoreria_francia.recalc_order_totals (precios con IVA). */
-export function computeTotals(lines: OrderLine[], express: boolean) {
+export function computeTotals(lines: OrderLine[], surchargePct: number) {
   const base = lines.reduce((sum, l) => sum + l.unitPriceCents * l.qty, 0);
-  const surcharge = express ? Math.round((base * 3) / 10) : 0;
+  const surcharge = Math.round((base * surchargePct) / 100);
   const total = base + surcharge;
   const subtotal = Math.round((total * 100) / 116);
   return { base, surcharge, subtotal, tax: total - subtotal, total };
+}
+
+export function orderSurchargePct(order: Pick<Order, "express" | "surchargePct" | "baseCents" | "surchargeCents">): number {
+  if (!order.express) return 0;
+  if (order.surchargePct != null) return order.surchargePct;
+  if (!order.baseCents) return 0;
+  return Math.round((order.surchargeCents * 100) / order.baseCents);
 }
 
 const moneyFmt = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });

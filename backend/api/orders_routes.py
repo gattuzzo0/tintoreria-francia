@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.deps import require_pos_staff, require_staff_writer
-from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo
+from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo, purge_order_photos
 from api.supabase_client import RpcError, call_rpc, get_supabase
 from api.validation import NOTES_MAX, sanitize_text
 
@@ -30,7 +30,7 @@ Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
     "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, "
-    "base_cents, surcharge_cents, subtotal_cents, tax_cents, total_cents, "
+    "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
     "order_lines(service_id, name, unit, unit_price_cents, qty, color), "
     "order_notes(id, body, created_at)"
 )
@@ -42,12 +42,12 @@ class OrderLineIn(BaseModel):
 
     service_id: str = Field(alias="serviceId", min_length=1, max_length=20)
     qty: int = Field(ge=1, le=999)
-    color: str = Field(min_length=1, max_length=20)
+    color: str = Field(default="", max_length=20)
 
     @field_validator("color")
     @classmethod
     def color_ok(cls, v: str) -> str:
-        if v not in GARMENT_COLORS:
+        if v and v not in GARMENT_COLORS:
             raise ValueError("Color inválido")
         return v
 
@@ -148,6 +148,7 @@ class OrderOut(BaseModel):
     createdAt: str
     baseCents: int
     surchargeCents: int
+    surchargePct: int | None = None
     subtotalCents: int
     taxCents: int
     totalCents: int
@@ -197,6 +198,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
         createdAt=created.isoformat() if hasattr(created, "isoformat") else str(created),
         baseCents=int(row["base_cents"]),
         surchargeCents=int(row["surcharge_cents"]),
+        surchargePct=int(row["surcharge_pct"]) if row.get("surcharge_pct") is not None else None,
         subtotalCents=int(row["subtotal_cents"]),
         taxCents=int(row["tax_cents"]),
         totalCents=int(row["total_cents"]),
@@ -360,4 +362,17 @@ async def add_order_photo(folio: int, body: AttachPhoto, staff: dict = Depends(r
         logger.exception("add_order_photo falló folio=%s", folio)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo agregar la foto") from None
     logger.info("audit order.photo.attach user_id=%s folio=%s photo_id=%s", staff["user_id"], folio, body.photo_id)
+    return _row_to_order_out(await _get_order_or_404(folio))
+
+
+@orders_router.delete("/{folio}/photos", response_model=OrderOut)
+async def clear_order_photos(folio: int, staff: dict = Depends(require_staff_writer)):
+    """Tras imprimir el ticket. La foto ya no se conserva."""
+    await _get_order_or_404(folio)
+    try:
+        removed = await asyncio.to_thread(purge_order_photos, folio)
+    except Exception:
+        logger.exception("purge_order_photos falló folio=%s", folio)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo borrar la foto") from None
+    logger.info("audit order.photo.purge user_id=%s folio=%s removed=%s", staff["user_id"], folio, removed)
     return _row_to_order_out(await _get_order_or_404(folio))

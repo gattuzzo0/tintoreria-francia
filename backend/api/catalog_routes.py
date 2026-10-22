@@ -185,3 +185,86 @@ async def delete_service(service_id: str, admin: dict = Depends(require_admin_wr
     if not res.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Servicio no encontrado")
     logger.info("audit service.delete user_id=%s service_id=%s", admin["user_id"], service_id)
+
+
+class DeliveryRatesOut(BaseModel):
+    extraSamePct: int
+    extraNextPct: int
+    urgentPct: int
+
+
+class DeliveryRatesIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    extra_same_pct: int = Field(alias="extraSamePct", ge=0, le=100, strict=True)
+    extra_next_pct: int = Field(alias="extraNextPct", ge=0, le=100, strict=True)
+    urgent_pct: int = Field(alias="urgentPct", ge=0, le=100, strict=True)
+
+
+def _rates_out(row: dict | None) -> DeliveryRatesOut:
+    if not row:
+        return DeliveryRatesOut(extraSamePct=30, extraNextPct=30, urgentPct=30)
+    return DeliveryRatesOut(
+        extraSamePct=int(row["extra_same_pct"]),
+        extraNextPct=int(row["extra_next_pct"]),
+        urgentPct=int(row["urgent_pct"]),
+    )
+
+
+def _fetch_rates():
+    return (
+        get_supabase()
+        .table("delivery_rates")
+        .select("extra_same_pct, extra_next_pct, urgent_pct")
+        .limit(1)
+        .execute()
+    )
+
+
+def _save_rates(body: DeliveryRatesIn):
+    return (
+        get_supabase()
+        .table("delivery_rates")
+        .upsert(
+            {
+                "id": True,
+                "extra_same_pct": body.extra_same_pct,
+                "extra_next_pct": body.extra_next_pct,
+                "urgent_pct": body.urgent_pct,
+            }
+        )
+        .execute()
+    )
+
+
+@catalog_router.get("/delivery-rates", response_model=DeliveryRatesOut)
+async def get_delivery_rates(_staff: dict = Depends(require_pos_staff)):
+    try:
+        res = await asyncio.to_thread(_fetch_rates)
+    except Exception:
+        logger.exception("get_delivery_rates falló")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudieron leer los cargos exprés. Aplica la migración 000011.",
+        ) from None
+    return _rates_out((res.data or [None])[0])
+
+
+@catalog_router.patch("/delivery-rates", response_model=DeliveryRatesOut)
+async def update_delivery_rates(body: DeliveryRatesIn, admin: dict = Depends(require_admin_writer)):
+    try:
+        res = await asyncio.to_thread(_save_rates, body)
+    except Exception:
+        logger.exception("update_delivery_rates falló user_id=%s", admin["user_id"])
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudieron guardar los cargos exprés. Aplica la migración 000011.",
+        ) from None
+    logger.info(
+        "audit delivery_rates.update user_id=%s extra_same=%s extra_next=%s urgent=%s",
+        admin["user_id"],
+        body.extra_same_pct,
+        body.extra_next_pct,
+        body.urgent_pct,
+    )
+    return _rates_out((res.data or [None])[0])

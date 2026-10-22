@@ -68,7 +68,10 @@ export function ServiceCatalog({
               <button
                 type="button"
                 disabled={locked}
-                onClick={() => setPicking({ id: s.id, name: s.name })}
+                onClick={() => {
+                  if (s.unit === "kg") addItem(s.id, "");
+                  else setPicking({ id: s.id, name: s.name });
+                }}
                 className={cn(
                   "group relative isolate flex min-h-32 w-full flex-col justify-between gap-6 overflow-hidden rounded-xl border bg-card p-4 text-left transition-all duration-200 outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
                   locked

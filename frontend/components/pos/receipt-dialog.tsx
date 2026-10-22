@@ -7,9 +7,18 @@ import { formatMoney, type Order } from "@/lib/pos-data";
 import { usePos } from "./pos-provider";
 import { PrintableTicket } from "./printable-ticket";
 
-export function ReceiptDialog({ order, onClose }: { order: Order | null; onClose: () => void }) {
+export function ReceiptDialog({
+  order,
+  onClose,
+  onPhotosCleared,
+}: {
+  order: Order | null;
+  onClose: () => void;
+  onPhotosCleared?: () => void;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
-  const { getCustomer } = usePos();
+  const purged = useRef(false);
+  const { getCustomer, clearOrderPhotos } = usePos();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -17,6 +26,29 @@ export function ReceiptDialog({ order, onClose }: { order: Order | null; onClose
     if (order && !dialog.open) dialog.showModal();
     if (!order && dialog.open) dialog.close();
   }, [order]);
+
+  useEffect(() => {
+    purged.current = false;
+  }, [order?.folio]);
+
+  const printTicket = () => {
+    if (!order) return;
+    const folio = order.folio;
+    const hasPhoto = Boolean(order.photoId || order.photoIds?.length);
+    const done = () => {
+      window.removeEventListener("afterprint", done);
+      // ponytail: el navegador no distingue imprimir de cancelar el diálogo.
+      if (!hasPhoto || purged.current) return;
+      purged.current = true;
+      void clearOrderPhotos(folio)
+        .then(() => onPhotosCleared?.())
+        .catch(() => {
+          purged.current = false;
+        });
+    };
+    window.addEventListener("afterprint", done);
+    window.print();
+  };
 
   const customer = order ? getCustomer(order.customerId) : undefined;
 
@@ -59,7 +91,7 @@ export function ReceiptDialog({ order, onClose }: { order: Order | null; onClose
           </div>
 
           <div className="flex gap-2 border-t px-5 py-4">
-            <Button className="flex-1 rounded-xl" onClick={() => window.print()}>
+            <Button className="flex-1 rounded-xl" onClick={printTicket}>
               <Printer aria-hidden /> Imprimir ticket
             </Button>
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => ref.current?.close()}>

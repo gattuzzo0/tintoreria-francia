@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { CalendarDays, Camera, Loader2, Minus, Plus, Trash2, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { deliveryOn, formatDeliveryLong, formatDeliveryShort, isAllowedDelivery, REGULAR_MIN_DAYS } from "@/lib/delivery";
+import { deliveryOn, formatDeliveryLong, formatDeliveryShort, isAllowedDelivery, REGULAR_MIN_DAYS, rushPct } from "@/lib/delivery";
 import { deleteOrderPhoto, uploadOrderPhoto } from "@/lib/pos-api";
 import { formatMoney, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,7 @@ export function TicketPanel({
   lookupKey?: number;
   onSaleComplete?: () => void;
 }) {
-  const { draft, draftLines, draftTotals, orders, setQty, updateDraft, checkout, getCustomer, withAuth } = usePos();
+  const { draft, draftLines, draftTotals, orders, rushRates, setQty, updateDraft, checkout, getCustomer, withAuth } = usePos();
   const photoInput = useRef<HTMLInputElement>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -155,7 +155,9 @@ export function TicketPanel({
               {draft.express === null
                 ? "Elige tipo y fecha"
                 : draft.express
-                  ? "Cargo de 30%"
+                  ? isAllowedDelivery(draft.deliveryDate, true)
+                    ? `Cargo de ${rushPct(draft.deliveryDate, true, rushRates)}%`
+                    : "Elige la fecha"
                   : "Sin cargo extra"}
             </span>
           </legend>
@@ -309,7 +311,7 @@ export function TicketPanel({
           </div>
           {draft.express && (
             <div className="flex basis-full justify-between text-primary">
-              <dt>Incluye exprés</dt>
+              <dt>Incluye exprés ({rushPct(draft.deliveryDate, true, rushRates)}%)</dt>
               <dd>{formatMoney(draftTotals.surcharge)}</dd>
             </div>
           )}
@@ -350,7 +352,11 @@ export function TicketPanel({
           if (!busy) setConfirming(false);
         }}
       />
-      <ReceiptDialog order={receipt} onClose={() => setReceipt(null)} />
+      <ReceiptDialog
+        order={receipt}
+        onClose={() => setReceipt(null)}
+        onPhotosCleared={() => setReceipt((current) => (current ? { ...current, photoId: null, photoIds: [] } : current))}
+      />
       <DeliveryDateDialog
         open={pickingDate}
         value={draft.express === false ? draft.deliveryDate : ""}
@@ -360,6 +366,7 @@ export function TicketPanel({
       <ExpressDeliveryDialog
         open={pickingExpress}
         value={draft.deliveryDate}
+        rates={rushRates}
         onSelect={(deliveryDate) => updateDraft({ express: true, deliveryDate })}
         onClose={() => setPickingExpress(false)}
       />

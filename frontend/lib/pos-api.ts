@@ -1,6 +1,7 @@
 import { ApiHttpError, apiFetch, apiUrl } from "./api-client";
 import type { Branch } from "./branches";
 import { prepareOrderPhoto } from "./prepare-order-photo";
+import type { RushRates } from "./delivery";
 import type { Category, Customer, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
 
 export type Me = {
@@ -38,6 +39,11 @@ export const updateService = (token: string, id: string, patch: Partial<ServiceI
 
 export const deleteService = (token: string, id: string) =>
   apiFetch<void>(`/api/catalog/services/${encodeURIComponent(id)}`, token, { method: "DELETE" });
+
+export const fetchDeliveryRates = (token: string) => apiFetch<RushRates>("/api/catalog/delivery-rates", token);
+
+export const updateDeliveryRates = (token: string, body: RushRates) =>
+  apiFetch<RushRates>("/api/catalog/delivery-rates", token, { method: "PATCH", body });
 
 export const fetchCustomers = (token: string) => apiFetch<Customer[]>("/api/customers", token);
 
@@ -96,6 +102,9 @@ export async function uploadOrderPhoto(token: string, file: File): Promise<{ id:
 
 export const deleteOrderPhoto = (token: string, photoId: string) =>
   apiFetch<void>(`/api/orders/photos/${photoId}`, token, { method: "DELETE" });
+
+export const deleteOrderPhotos = (token: string, folio: number) =>
+  apiFetch<Order>(`/api/orders/${folio}/photos`, token, { method: "DELETE" });
 
 export const attachOrderPhoto = (token: string, folio: number, photoId: string) =>
   apiFetch<Order>(`/api/orders/${folio}/photos`, token, { method: "POST", body: { photoId } });

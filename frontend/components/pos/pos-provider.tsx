@@ -5,16 +5,19 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { ApiHttpError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
+import { DEFAULT_RUSH_RATES, rushPct, type RushRates } from "@/lib/delivery";
 import { lineKey, parseLineKey } from "@/lib/garment-colors";
 import {
   addOrderNote,
   attachOrderPhoto,
   deleteOrderPhoto,
+  deleteOrderPhotos,
   uploadOrderPhoto,
   advanceOrderStatus,
   createCustomer,
   createOrder,
   fetchCustomers,
+  fetchDeliveryRates,
   fetchOrders,
   fetchServices,
 } from "@/lib/pos-api";
@@ -59,6 +62,7 @@ type PosContextValue = {
   draftLines: OrderLine[];
   draftTotals: ReturnType<typeof computeTotals>;
   services: Service[];
+  rushRates: RushRates;
   orders: Order[];
   customers: Customer[];
   addItem: (id: string, color: string) => void;
@@ -70,9 +74,11 @@ type PosContextValue = {
   advanceOrder: (folio: number, status: OrderStatus) => Promise<void>;
   addNote: (folio: number, body: string) => Promise<void>;
   addOrderPhoto: (folio: number, file: File) => Promise<void>;
+  clearOrderPhotos: (folio: number) => Promise<void>;
   addCustomer: (data: { name: string; phone: string }) => Promise<Customer>;
   getCustomer: (id: string) => Customer | undefined;
   setServices: (services: Service[]) => void;
+  setRushRates: (rates: RushRates) => void;
   /** Ejecuta una llamada a la API; ante 401 refresca la sesión una vez y reintenta. */
   withAuth: <T>(call: (accessToken: string) => Promise<T>) => Promise<T>;
 };
@@ -87,6 +93,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [services, setServicesState] = useState<Service[]>([]);
+  const [rushRates, setRushRatesState] = useState<RushRates>(DEFAULT_RUSH_RATES);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const idempotencyKey = useRef<string>(crypto.randomUUID());
@@ -106,14 +113,23 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   );
 
   const fetchAll = useCallback(
-    () => withAuth((t) => Promise.all([fetchServices(t), fetchCustomers(t), fetchOrders(t)])),
+    () =>
+      withAuth((t) =>
+        Promise.all([
+          fetchServices(t),
+          fetchCustomers(t),
+          fetchOrders(t),
+          fetchDeliveryRates(t).catch(() => DEFAULT_RUSH_RATES),
+        ]),
+      ),
     [withAuth],
   );
 
-  const applyData = useCallback(([s, c, o]: [Service[], Customer[], Order[]]) => {
+  const applyData = useCallback(([s, c, o, rates]: [Service[], Customer[], Order[], RushRates]) => {
     setServicesState(s);
     setCustomers(c);
     setOrders(o);
+    setRushRatesState(rates);
     setLoadError(null);
     setStatus("ready");
   }, []);
@@ -153,7 +169,10 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     }
     return lines;
   }, [services, draft.quantities]);
-  const draftTotals = useMemo(() => computeTotals(draftLines, draft.express === true), [draftLines, draft.express]);
+  const draftTotals = useMemo(
+    () => computeTotals(draftLines, draft.express && draft.deliveryDate ? rushPct(draft.deliveryDate, true, rushRates) : 0),
+    [draftLines, draft.express, draft.deliveryDate, rushRates],
+  );
 
   const setQty = useCallback((id: string, color: string, qty: number) => {
     const key = lineKey(id, color);
@@ -242,6 +261,14 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     [withAuth],
   );
 
+  const clearOrderPhotos = useCallback(
+    async (folio: number) => {
+      const updated = await withAuth((t) => deleteOrderPhotos(t, folio));
+      setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
+    },
+    [withAuth],
+  );
+
   const addCustomer = useCallback(
     async (data: { name: string; phone: string }) => {
       const customer = await withAuth((t) => createCustomer(t, data));
@@ -254,6 +281,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const getCustomer = useCallback((id: string) => customers.find((c) => c.id === id), [customers]);
 
   const setServices = useCallback((next: Service[]) => setServicesState(next.filter((s) => s.active)), []);
+  const setRushRates = useCallback((next: RushRates) => setRushRatesState(next), []);
 
   const value = useMemo(
     () => ({
@@ -264,6 +292,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       draftLines,
       draftTotals,
       services,
+      rushRates,
       orders,
       customers,
       addItem,
@@ -275,12 +304,14 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       advanceOrder,
       addNote,
       addOrderPhoto,
+      clearOrderPhotos,
       addCustomer,
       getCustomer,
       setServices,
+      setRushRates,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, orders, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, addCustomer, getCustomer, setServices],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, orders, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, getCustomer, setServices, setRushRates],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;

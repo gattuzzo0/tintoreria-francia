@@ -73,6 +73,8 @@ create table if not exists tintoreria_francia.orders (
   notes text not null default '' check (char_length(notes) <= 280),
   base_cents integer not null default 0 check (base_cents >= 0),
   surcharge_cents integer not null default 0 check (surcharge_cents >= 0),
+  -- Porcentaje aplicado al crear. null = orden vieja, el recargo ya está en surcharge_cents (30% si exprés).
+  surcharge_pct smallint check (surcharge_pct is null or surcharge_pct between 0 and 100),
   subtotal_cents integer not null default 0 check (subtotal_cents >= 0),
   tax_cents integer not null default 0 check (tax_cents >= 0),
   total_cents integer not null default 0 check (total_cents >= 0),
@@ -141,6 +143,16 @@ create table if not exists tintoreria_francia.order_photos (
 
 create index if not exists idx_tintoreria_francia_order_photos_folio
   on tintoreria_francia.order_photos (order_folio);
+-- Un solo renglón. Porcentajes de cargo exprés (0–100).
+create table if not exists tintoreria_francia.delivery_rates (
+  id boolean primary key default true check (id),
+  extra_same_pct smallint not null default 30 check (extra_same_pct between 0 and 100),
+  extra_next_pct smallint not null default 30 check (extra_next_pct between 0 and 100),
+  urgent_pct smallint not null default 30 check (urgent_pct between 0 and 100)
+);
+
+insert into tintoreria_francia.delivery_rates (id) values (true) on conflict do nothing;
+
 create index if not exists idx_tintoreria_francia_orders_created_at on tintoreria_francia.orders (created_at desc);
 create index if not exists idx_tintoreria_francia_orders_customer_id on tintoreria_francia.orders (customer_id);
 create index if not exists idx_tintoreria_francia_order_lines_order_folio on tintoreria_francia.order_lines (order_folio);
@@ -164,6 +176,8 @@ alter table tintoreria_francia.order_notes enable row level security;
 alter table tintoreria_francia.order_notes force row level security;
 alter table tintoreria_francia.order_photos enable row level security;
 alter table tintoreria_francia.order_photos force row level security;
+alter table tintoreria_francia.delivery_rates enable row level security;
+alter table tintoreria_francia.delivery_rates force row level security;
 
 revoke all on schema tintoreria_francia from anon, authenticated;
 revoke all on all tables in schema tintoreria_francia from anon, authenticated;
@@ -175,7 +189,7 @@ grant all on all sequences in schema tintoreria_francia to service_role;
 
 -- ---------------------------------------------------------------------
 -- Totales: misma fórmula que el frontend (precios con IVA incluido)
---   base = Σ precio·cant; recargo = round(base·0.30) si exprés
+--   base = Σ precio·cant; recargo = round(base·surcharge_pct/100)
 --   total = base + recargo; subtotal = round(total / 1.16); iva = total − subtotal
 -- ---------------------------------------------------------------------
 create or replace function tintoreria_francia.recalc_order_totals(p_folio integer)
@@ -185,16 +199,17 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_express boolean;
+  v_pct integer;
   v_base integer;
   v_surcharge integer;
   v_total integer;
   v_subtotal integer;
 begin
-  select express into v_express from tintoreria_francia.orders where folio = p_folio;
+  select coalesce(surcharge_pct, case when express then 30 else 0 end) into v_pct
+    from tintoreria_francia.orders where folio = p_folio;
   select coalesce(sum(unit_price_cents * qty), 0) into v_base
     from tintoreria_francia.order_lines where order_folio = p_folio;
-  v_surcharge := case when v_express then round(v_base * 0.30)::integer else 0 end;
+  v_surcharge := round(v_base * v_pct / 100.0)::integer;
   v_total := v_base + v_surcharge;
   v_subtotal := round(v_total / 1.16)::integer;
   update tintoreria_francia.orders
@@ -239,6 +254,10 @@ declare
   v_service tintoreria_francia.services%rowtype;
   v_qty integer;
   v_color text;
+  v_pct integer;
+  v_same_pct integer;
+  v_next_pct integer;
+  v_two_pct integer;
   v_today date := (now() at time zone 'America/Mexico_City')::date;
   v_same date;
   v_next date;
@@ -293,21 +312,37 @@ begin
       raise exception 'Cantidad inválida' using errcode = '22023';
     end if;
 
-    v_color := v_line ->> 'color';
-    if v_color is null or v_color not in ('rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco') then
-      raise exception 'Color inválido' using errcode = '22023';
-    end if;
-
     select * into v_service from tintoreria_francia.services
      where id = v_line ->> 'serviceId' and active;
     if not found then
       raise exception 'Servicio no disponible: %', v_line ->> 'serviceId' using errcode = '22023';
     end if;
 
+    v_color := coalesce(v_line ->> 'color', '');
+    if v_service.unit = 'kg' then
+      v_color := '';
+    elsif v_color not in ('rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco') then
+      raise exception 'Color inválido' using errcode = '22023';
+    end if;
+
     insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color)
     values (v_folio, v_service.id, v_service.name, v_service.unit, v_service.price_cents, v_qty, v_color);
   end loop;
 
+  select extra_same_pct, extra_next_pct, urgent_pct
+    into v_same_pct, v_next_pct, v_two_pct
+    from tintoreria_francia.delivery_rates
+   where id;
+
+  v_pct := case
+    when not p_express then 0
+    when p_delivery_date = v_same then v_same_pct
+    when p_delivery_date = v_next then v_next_pct
+    when p_delivery_date = v_urgent then v_two_pct
+    else 0
+  end;
+
+  update tintoreria_francia.orders set surcharge_pct = v_pct where folio = v_folio;
   perform tintoreria_francia.recalc_order_totals(v_folio);
   return v_folio;
 end;

@@ -4,7 +4,7 @@ import json
 import re
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -173,3 +173,22 @@ class VercelFileHeaderTests(unittest.TestCase):
                 ),
                 api_path,
             )
+
+
+class PurgeOrderPhotosTests(unittest.TestCase):
+    def test_purge_deletes_full_and_thumb(self):
+        sb = MagicMock()
+        sb.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+            {"id": "p", "object_key": "orders/u/pic.jpg"},
+        ]
+        with (
+            patch("api.order_photo_routes.get_supabase", return_value=sb),
+            patch("api.order_photo_routes.delete_object") as delete,
+        ):
+            from api.order_photo_routes import purge_order_photos
+
+            removed = purge_order_photos(7)
+        self.assertEqual(removed, 1)
+        self.assertEqual(delete.call_args_list[0].args, ("orders/u/pic.jpg",))
+        self.assertEqual(delete.call_args_list[1].args, ("orders/u/pic_thumb.webp",))
+        sb.table.return_value.delete.return_value.eq.assert_called_once_with("order_folio", 7)
