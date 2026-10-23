@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { CalendarDays, X, Zap } from "lucide-react";
-import { addDays, deliveryOn, deliveryWindow, formatDeliveryLong, formatDeliveryShort, formatMonthShort, isSunday, parseIsoDate, toIsoDate } from "@/lib/delivery";
+import { addDays, deliveryOn, deliveryWindow, formatDeliveryLong, formatDeliveryShort, formatMonthShort, isSunday, parseIsoDate, toIsoDate, type RushRates } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
@@ -124,16 +124,18 @@ export function DeliveryDateDialog({
 }
 
 const CHOICE =
-  "h-14 rounded-xl border text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30";
+  "min-h-14 rounded-xl border px-2 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30";
 
 export function ExpressDeliveryDialog({
   open,
   value,
+  rates,
   onSelect,
   onClose,
 }: {
   open: boolean;
   value: string;
+  rates: RushRates;
   onSelect: (iso: string) => void;
   onClose: () => void;
 }) {
@@ -192,6 +194,9 @@ export function ExpressDeliveryDialog({
               className={cn(CHOICE, extra ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted")}
             >
               Extra urgente
+              <span className="mt-0.5 block text-[11px] font-normal">
+                {rates.extraSamePct}% hoy · {rates.extraNextPct}% mañana
+              </span>
             </button>
             <button
               type="button"
@@ -206,26 +211,28 @@ export function ExpressDeliveryDialog({
               )}
             >
               Urgente
-              <span className="mt-0.5 block text-[11px] font-normal">{formatDeliveryShort(urgent)}</span>
+              <span className="mt-0.5 block text-[11px] font-normal">
+                {rates.urgentPct}% · {formatDeliveryShort(urgent)}
+              </span>
             </button>
           </div>
 
           {extra && (
             <div className="mt-4 flex items-center justify-center gap-3 text-sm">
-              <span className={cn(nextDay && "font-semibold")}>Día siguiente</span>
+              <span className={cn(nextDay ? "font-semibold text-foreground" : "text-foreground/35")}>Día siguiente</span>
               <label className="relative inline-flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   role="switch"
                   checked={!nextDay}
-                  aria-label={nextDay ? "Entrega al día siguiente" : "Entrega el mismo día"}
+                  aria-label={nextDay ? "Entrega al día siguiente" : "Entrega hoy"}
                   onChange={(e) => onSelect(deliveryOn(e.target.checked ? 0 : 1))}
                   className="peer sr-only"
                 />
                 <span className="h-6 w-11 rounded-full bg-muted peer-checked:bg-primary peer-focus-visible:ring-3 peer-focus-visible:ring-ring/30" />
                 <span className="pointer-events-none absolute top-0.5 left-0.5 size-5 rounded-full bg-background transition-transform peer-checked:translate-x-5" />
               </label>
-              <span className={cn(!nextDay && "font-semibold")}>Mismo día</span>
+              <span className={cn(!nextDay ? "font-semibold text-foreground" : "text-foreground/35")}>Hoy</span>
             </div>
           )}
 

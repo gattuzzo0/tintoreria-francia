@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createService, deleteService, fetchServices, updateService, type ServiceInput } from "@/lib/pos-api";
+import type { RushRates } from "@/lib/delivery";
+import { createService, deleteService, fetchDeliveryRates, fetchServices, updateDeliveryRates, updateService, type ServiceInput } from "@/lib/pos-api";
 import { CATEGORIES, formatMoney, UNITS, type Category, type Service, type Unit } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NAME_MAX, sanitizeText } from "@/lib/validation";
@@ -31,6 +32,107 @@ function parsePriceCents(value: string): number | null {
   if (!new RegExp(`^[0-9]{1,${PRICE_MAX_DIGITS}}$`).test(value)) return null;
   const pesos = Number(value);
   return pesos > 0 ? pesos * 100 : null;
+}
+
+const RATE_FIELDS = [
+  ["extraSamePct", "Extra urgente · mismo día"],
+  ["extraNextPct", "Extra urgente · día siguiente"],
+  ["urgentPct", "Urgente · 2 días"],
+] as const;
+
+function parsePct(value: string): number | null {
+  if (!/^\d{1,3}$/.test(value)) return null;
+  const n = Number(value);
+  return n <= 100 ? n : null;
+}
+
+function RushRatesCard() {
+  const { withAuth, rushRates, setRushRates } = usePos();
+  const [form, setForm] = useState({
+    extraSamePct: String(rushRates.extraSamePct),
+    extraNextPct: String(rushRates.extraNextPct),
+    urgentPct: String(rushRates.urgentPct),
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    withAuth(fetchDeliveryRates).then(
+      (rates) => {
+        if (cancelled) return;
+        setRushRates(rates);
+        setForm({
+          extraSamePct: String(rates.extraSamePct),
+          extraNextPct: String(rates.extraNextPct),
+          urgentPct: String(rates.urgentPct),
+        });
+      },
+      () => !cancelled && setError("No se pudieron leer los cargos. Aplica la migración 000011."),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [withAuth, setRushRates]);
+
+  const save = async () => {
+    const next = {} as RushRates;
+    for (const [key] of RATE_FIELDS) {
+      const pct = parsePct(form[key]);
+      if (pct === null) {
+        setError("Cada cargo es un entero de 0 a 100.");
+        return;
+      }
+      next[key] = pct;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      setRushRates(await withAuth((t) => updateDeliveryRates(t, next)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron guardar los cargos.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form
+      className="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <p className={`${LABEL} sm:col-span-4`}>Cargos exprés</p>
+      {RATE_FIELDS.map(([key, label]) => (
+        <label key={key} className="grid gap-1">
+          <span className={LABEL}>{label}</span>
+          <span className="relative">
+            <input
+              inputMode="numeric"
+              value={form[key]}
+              aria-label={`${label} (%)`}
+              onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value.replace(/\D/g, "").slice(0, 3) }))}
+              className={cn(INPUT, "pr-7 text-right font-mono")}
+            />
+            <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-sm font-bold text-foreground" aria-hidden>
+              %
+            </span>
+          </span>
+        </label>
+      ))}
+      <Button type="submit" className="h-9 rounded-xl" disabled={busy}>
+        {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Save aria-hidden />}
+        Guardar
+      </Button>
+      {error && (
+        <p role="alert" className="text-sm text-destructive sm:col-span-4">
+          {error}
+        </p>
+      )}
+    </form>
+  );
 }
 
 function toInput(f: FormState): ServiceInput | string {
@@ -87,6 +189,8 @@ export function CatalogAdmin() {
           {adding ? "Cancelar" : "Nuevo servicio"}
         </Button>
       </div>
+
+      <RushRatesCard />
 
       {adding && (
         <ServiceForm

@@ -1,7 +1,8 @@
 import { ApiHttpError, apiFetch, apiUrl } from "./api-client";
 import type { Branch } from "./branches";
 import { prepareOrderPhoto } from "./prepare-order-photo";
-import type { Category, Customer, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
+import type { RushRates } from "./delivery";
+import type { Category, Customer, DeliveredOrder, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
 
 export type Me = {
   userId: string;
@@ -39,12 +40,46 @@ export const updateService = (token: string, id: string, patch: Partial<ServiceI
 export const deleteService = (token: string, id: string) =>
   apiFetch<void>(`/api/catalog/services/${encodeURIComponent(id)}`, token, { method: "DELETE" });
 
+export const fetchDeliveryRates = (token: string) => apiFetch<RushRates>("/api/catalog/delivery-rates", token);
+
+export const updateDeliveryRates = (token: string, body: RushRates) =>
+  apiFetch<RushRates>("/api/catalog/delivery-rates", token, { method: "PATCH", body });
+
 export const fetchCustomers = (token: string) => apiFetch<Customer[]>("/api/customers", token);
 
 export const createCustomer = (token: string, body: { name: string; phone: string }) =>
   apiFetch<Customer>("/api/customers", token, { method: "POST", body });
 
-export const fetchOrders = (token: string) => apiFetch<Order[]>("/api/orders", token);
+export type OrderBoard = { orders: Order[]; delivered: DeliveredOrder[]; hasMore: boolean };
+
+export type OrderSummary = {
+  recibido: number;
+  proceso: number;
+  listo: number;
+  entregado: number;
+  receivableCents: number;
+  nextFolio: number;
+};
+
+export type CustomerStat = { customerId: string; orders: number; active: number; spentCents: number };
+
+export const fetchOrderPage = (
+  token: string,
+  params: { status: OrderStatus; branch: string; before?: number; q?: string },
+) => {
+  const qs = new URLSearchParams({ status: params.status, branch: params.branch });
+  if (params.before) qs.set("before", String(params.before));
+  if (params.q) qs.set("q", params.q);
+  return apiFetch<OrderBoard>(`/api/orders?${qs}`, token);
+};
+
+export const fetchOrderSummary = (token: string, branch: string) =>
+  apiFetch<OrderSummary>(`/api/orders/summary?${new URLSearchParams({ branch })}`, token);
+
+export const fetchCustomerStats = (token: string, branch: string) =>
+  apiFetch<CustomerStat[]>(`/api/orders/stats?${new URLSearchParams({ branch })}`, token);
+
+export const fetchOrder = (token: string, folio: number) => apiFetch<Order>(`/api/orders/${folio}`, token);
 
 export const createOrder = (token: string, body: CreateOrderBody, idempotencyKey: string) =>
   apiFetch<Order>("/api/orders", token, { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });
@@ -96,6 +131,9 @@ export async function uploadOrderPhoto(token: string, file: File): Promise<{ id:
 
 export const deleteOrderPhoto = (token: string, photoId: string) =>
   apiFetch<void>(`/api/orders/photos/${photoId}`, token, { method: "DELETE" });
+
+export const deleteOrderPhotos = (token: string, folio: number) =>
+  apiFetch<Order>(`/api/orders/${folio}/photos`, token, { method: "DELETE" });
 
 export const attachOrderPhoto = (token: string, folio: number, photoId: string) =>
   apiFetch<Order>(`/api/orders/${folio}/photos`, token, { method: "POST", body: { photoId } });

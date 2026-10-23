@@ -6,11 +6,11 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.deps import require_pos_staff, require_staff_writer
-from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo
+from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo, purge_order_photos
 from api.supabase_client import RpcError, call_rpc, get_supabase
 from api.validation import NOTES_MAX, sanitize_text
 
@@ -23,14 +23,15 @@ OrderStatus = Literal["recibido", "proceso", "listo", "entregado"]
 NEXT_STATUS: dict[str, str] = {"recibido": "proceso", "proceso": "listo", "listo": "entregado"}
 MAX_LINES = 50
 ORDERS_LIMIT = 500
+PAGE_SIZE = 6
 GARMENT_COLORS = frozenset(
     {"rojo", "amarillo", "verde", "azul", "azul_claro", "morado", "rosa", "naranja", "cafe", "negro", "blanco"}
 )
 Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
-    "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, "
-    "base_cents, surcharge_cents, subtotal_cents, tax_cents, total_cents, "
+    "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, status_updated_at, "
+    "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
     "order_lines(service_id, name, unit, unit_price_cents, qty, color), "
     "order_notes(id, body, created_at)"
 )
@@ -42,12 +43,12 @@ class OrderLineIn(BaseModel):
 
     service_id: str = Field(alias="serviceId", min_length=1, max_length=20)
     qty: int = Field(ge=1, le=999)
-    color: str = Field(min_length=1, max_length=20)
+    color: str = Field(default="", max_length=20)
 
     @field_validator("color")
     @classmethod
     def color_ok(cls, v: str) -> str:
-        if v not in GARMENT_COLORS:
+        if v and v not in GARMENT_COLORS:
             raise ValueError("Color inválido")
         return v
 
@@ -132,6 +133,15 @@ class OrderLineOut(BaseModel):
     color: str = ""
 
 
+class DeliveredOut(BaseModel):
+    folio: int
+    customerId: str
+    payment: PaymentMethod
+    totalCents: int
+    statusUpdatedAt: str
+    branch: Branch | None = None
+
+
 class OrderOut(BaseModel):
     folio: int
     customerId: str
@@ -146,11 +156,35 @@ class OrderOut(BaseModel):
     photoIds: list[str] = []
     staffNotes: list[OrderNoteOut]
     createdAt: str
+    statusUpdatedAt: str
     baseCents: int
     surchargeCents: int
+    surchargePct: int | None = None
     subtotalCents: int
     taxCents: int
     totalCents: int
+
+
+class OrderPageOut(BaseModel):
+    orders: list[OrderOut] = []
+    delivered: list[DeliveredOut] = []
+    hasMore: bool
+
+
+class OrderSummaryOut(BaseModel):
+    recibido: int
+    proceso: int
+    listo: int
+    entregado: int
+    receivableCents: int
+    nextFolio: int
+
+
+class CustomerStatOut(BaseModel):
+    customerId: str
+    orders: int
+    active: int
+    spentCents: int
 
 
 def _iso(value) -> str:
@@ -195,27 +229,18 @@ def _row_to_order_out(row: dict) -> OrderOut:
             for n in sorted(row.get("order_notes") or [], key=lambda n: int(n["id"]))
         ],
         createdAt=created.isoformat() if hasattr(created, "isoformat") else str(created),
+        statusUpdatedAt=_iso(row["status_updated_at"]),
         baseCents=int(row["base_cents"]),
         surchargeCents=int(row["surcharge_cents"]),
+        surchargePct=int(row["surcharge_pct"]) if row.get("surcharge_pct") is not None else None,
         subtotalCents=int(row["subtotal_cents"]),
         taxCents=int(row["tax_cents"]),
         totalCents=int(row["total_cents"]),
     )
 
 
-def _query_orders(columns: str, folio: int | None):
-    query = get_supabase().table("orders").select(columns)
-    if folio is None:
-        return query.order("folio", desc=True).limit(ORDERS_LIMIT).execute()
-    return query.eq("folio", folio).limit(1).execute()
-
-
-def _fetch_orders():
-    try:
-        return _query_orders(_SELECT, None)
-    except Exception:
-        logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
-        return _query_orders(_SELECT_PLAIN, None)
+def _query_orders(columns: str, folio: int):
+    return get_supabase().table("orders").select(columns).eq("folio", folio).limit(1).execute()
 
 
 def _fetch_order(folio: int):
@@ -257,14 +282,193 @@ async def _get_order_or_404(folio: int) -> dict:
     return res.data[0]
 
 
-@orders_router.get("", response_model=list[OrderOut])
-async def list_orders(_staff: dict = Depends(require_pos_staff)):
+def _delivered_out(row: dict) -> DeliveredOut:
+    return DeliveredOut(
+        folio=int(row["folio"]),
+        customerId=str(row["customer_id"]),
+        payment=row["payment_method"],
+        totalCents=int(row["total_cents"]),
+        statusUpdatedAt=_iso(row["status_updated_at"]),
+        branch=row.get("branch"),
+    )
+
+
+def _branch_or_422(branch: str) -> str:
+    if branch not in ("Nereo Rdz.", "Sucursal móvil", "Centro"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Sucursal inválida")
+    return branch
+
+
+def _page_rows(columns: str, order_status: str, branch: str, before: int | None):
+    query = get_supabase().table("orders").select(columns).eq("status", order_status).eq("branch", branch)
+    if before is not None:
+        query = query.lt("folio", before)
+    return query.order("folio", desc=True).limit(PAGE_SIZE + 1).execute()
+
+
+def _folios_matching(order_status: str, branch: str, q: str, before: int | None) -> list[int]:
+    """Solo el número de folio. El texto del folio se filtra aquí: PostgREST no castea enteros."""
+    res = (
+        get_supabase()
+        .table("orders")
+        .select("folio")
+        .eq("status", order_status)
+        .eq("branch", branch)
+        .order("folio", desc=True)
+        .limit(ORDERS_LIMIT)
+        .execute()
+    )
+    folios = [int(row["folio"]) for row in res.data or []]
+    if q:
+        folios = [folio for folio in folios if q in str(folio)]
+    if before is not None:
+        folios = [folio for folio in folios if folio < before]
+    return folios
+
+
+def _rows_for_folios(columns: str, folios: list[int]) -> list[dict]:
+    if not folios:
+        return []
+    res = get_supabase().table("orders").select(columns).in_("folio", folios).execute()
+    by_folio = {int(row["folio"]): row for row in res.data or []}
+    return [by_folio[folio] for folio in folios if folio in by_folio]
+
+
+def _fetch_page(order_status: str, branch: str, before: int | None, q: str) -> tuple[list[dict], bool]:
+    columns = (
+        "folio, customer_id, payment_method, total_cents, status_updated_at, branch"
+        if order_status == "entregado"
+        else _SELECT
+    )
+    if q:
+        matched = _folios_matching(order_status, branch, q, before)
+        has_more = len(matched) > PAGE_SIZE
+        chosen = matched[:PAGE_SIZE]
+        try:
+            return _rows_for_folios(columns, chosen), has_more
+        except Exception:
+            if order_status == "entregado":
+                raise
+            logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
+            return _rows_for_folios(_SELECT_PLAIN, chosen), has_more
     try:
-        res = await asyncio.to_thread(_fetch_orders)
+        res = _page_rows(columns, order_status, branch, before)
     except Exception:
-        logger.exception("list_orders falló")
+        if order_status == "entregado":
+            raise
+        logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
+        res = _page_rows(_SELECT_PLAIN, order_status, branch, before)
+    rows = res.data or []
+    return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE
+
+
+def _count_status(order_status: str, branch: str) -> int:
+    res = (
+        get_supabase()
+        .table("orders")
+        .select("folio", count="exact", head=True)
+        .eq("status", order_status)
+        .eq("branch", branch)
+        .execute()
+    )
+    return int(res.count or 0)
+
+
+def _fetch_summary(branch: str) -> OrderSummaryOut:
+    receivable = (
+        get_supabase()
+        .table("orders")
+        .select("total_cents")
+        .eq("branch", branch)
+        .eq("payment_method", "pendiente")
+        .limit(ORDERS_LIMIT)
+        .execute()
+    )
+    latest = get_supabase().table("orders").select("folio").order("folio", desc=True).limit(1).execute()
+    last_folio = int(latest.data[0]["folio"]) if latest.data else 1000
+    return OrderSummaryOut(
+        recibido=_count_status("recibido", branch),
+        proceso=_count_status("proceso", branch),
+        listo=_count_status("listo", branch),
+        entregado=_count_status("entregado", branch),
+        receivableCents=sum(int(row["total_cents"]) for row in receivable.data or []),
+        nextFolio=last_folio + 1,
+    )
+
+
+def _fetch_customer_stats(branch: str) -> list[CustomerStatOut]:
+    res = (
+        get_supabase()
+        .table("orders")
+        .select("customer_id, status, total_cents")
+        .eq("branch", branch)
+        .limit(ORDERS_LIMIT)
+        .execute()
+    )
+    grouped: dict[str, CustomerStatOut] = {}
+    for row in res.data or []:
+        customer_id = str(row["customer_id"])
+        stat = grouped.get(customer_id)
+        if stat is None:
+            stat = CustomerStatOut(customerId=customer_id, orders=0, active=0, spentCents=0)
+            grouped[customer_id] = stat
+        stat.orders += 1
+        stat.spentCents += int(row["total_cents"])
+        if row["status"] != "entregado":
+            stat.active += 1
+    return list(grouped.values())
+
+
+@orders_router.get("", response_model=OrderPageOut)
+async def list_orders(
+    order_status: OrderStatus = Query(alias="status"),
+    branch: str = Query(min_length=1, max_length=40),
+    before: int | None = Query(default=None, ge=1),
+    q: str = Query(default="", max_length=9),
+    _staff: dict = Depends(require_pos_staff),
+):
+    branch_name = _branch_or_422(branch)
+    if q and not q.isdigit():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail="La búsqueda solo acepta números")
+    try:
+        rows, has_more = await asyncio.to_thread(_fetch_page, order_status, branch_name, before, q)
+    except Exception:
+        logger.exception("list_orders falló status=%s", order_status)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudieron leer las órdenes") from None
-    return [_row_to_order_out(r) for r in res.data or []]
+    if order_status == "entregado":
+        return OrderPageOut(delivered=[_delivered_out(row) for row in rows], hasMore=has_more)
+    return OrderPageOut(orders=[_row_to_order_out(row) for row in rows], hasMore=has_more)
+
+
+@orders_router.get("/summary", response_model=OrderSummaryOut)
+async def order_summary(
+    branch: str = Query(min_length=1, max_length=40),
+    _staff: dict = Depends(require_pos_staff),
+):
+    branch_name = _branch_or_422(branch)
+    try:
+        return await asyncio.to_thread(_fetch_summary, branch_name)
+    except Exception:
+        logger.exception("order_summary falló")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudieron leer las órdenes") from None
+
+
+@orders_router.get("/stats", response_model=list[CustomerStatOut])
+async def customer_order_stats(
+    branch: str = Query(min_length=1, max_length=40),
+    _staff: dict = Depends(require_pos_staff),
+):
+    branch_name = _branch_or_422(branch)
+    try:
+        return await asyncio.to_thread(_fetch_customer_stats, branch_name)
+    except Exception:
+        logger.exception("customer_order_stats falló")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudieron leer las órdenes") from None
+
+
+@orders_router.get("/{folio}", response_model=OrderOut)
+async def get_order(folio: int, _staff: dict = Depends(require_pos_staff)):
+    return _row_to_order_out(await _get_order_or_404(folio))
 
 
 @orders_router.post("", response_model=OrderOut, status_code=status.HTTP_201_CREATED)
@@ -360,4 +564,17 @@ async def add_order_photo(folio: int, body: AttachPhoto, staff: dict = Depends(r
         logger.exception("add_order_photo falló folio=%s", folio)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo agregar la foto") from None
     logger.info("audit order.photo.attach user_id=%s folio=%s photo_id=%s", staff["user_id"], folio, body.photo_id)
+    return _row_to_order_out(await _get_order_or_404(folio))
+
+
+@orders_router.delete("/{folio}/photos", response_model=OrderOut)
+async def clear_order_photos(folio: int, staff: dict = Depends(require_staff_writer)):
+    """Tras imprimir el ticket. La foto ya no se conserva."""
+    await _get_order_or_404(folio)
+    try:
+        removed = await asyncio.to_thread(purge_order_photos, folio)
+    except Exception:
+        logger.exception("purge_order_photos falló folio=%s", folio)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo borrar la foto") from None
+    logger.info("audit order.photo.purge user_id=%s folio=%s removed=%s", staff["user_id"], folio, removed)
     return _row_to_order_out(await _get_order_or_404(folio))

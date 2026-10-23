@@ -33,7 +33,7 @@ export function parseLineKey(key: string): { serviceId: string; color: string } 
   if (i <= 0) return null;
   const serviceId = key.slice(0, i);
   const color = key.slice(i + 1);
-  if (!serviceId || !garmentColor(color)) return null;
+  if (!serviceId || (color !== "" && !garmentColor(color))) return null;
   return { serviceId, color };
 }
 
@@ -49,4 +49,6 @@ export function qtyForService(quantities: Record<string, number>, serviceId: str
   if (!parsed || parsed.serviceId !== "s1" || parsed.color !== "rojo") throw new Error("lineKey");
   if (parseLineKey("s1") !== null) throw new Error("parseLineKey");
   if (!garmentColor("rosa") || !garmentColor("azul_claro")) throw new Error("garmentColor");
+  const kilo = parseLineKey(lineKey("s7", ""));
+  if (!kilo || kilo.color !== "") throw new Error("kilo");
 }

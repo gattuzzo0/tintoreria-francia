@@ -49,25 +49,47 @@ export type Order = {
   /** Notas del staff durante el proceso, en orden de captura. */
   staffNotes: OrderNote[];
   createdAt: string;
+  /** Último cambio de estado. En una orden entregada, es el momento de la entrega. */
+  statusUpdatedAt?: string;
   baseCents: number;
   surchargeCents: number;
+  /** null en órdenes de antes de 000011: el ticket asume 30% si son exprés. */
+  surchargePct?: number | null;
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+};
+
+/** Fila del tab Entregado: sin líneas, notas ni fotos. El detalle se pide al abrirla. */
+export type DeliveredOrder = {
+  folio: number;
+  customerId: string;
+  payment: PaymentMethod;
+  totalCents: number;
+  /** Momento en que pasó a entregado. */
+  statusUpdatedAt: string;
+  /** null en órdenes anteriores a la sucursal. */
+  branch?: string | null;
 };
 
 export const CATEGORIES: Category[] = ["Prendas", "Trajes", "Hogar", "Especiales"];
 export const UNITS: Unit[] = ["pza", "kg", "par"];
 
 export const TAX_RATE = 0.16;
-export const EXPRESS_RATE = 0.3;
 /** Centavos enteros; misma fórmula que tintoreria_francia.recalc_order_totals (precios con IVA). */
-export function computeTotals(lines: OrderLine[], express: boolean) {
+export function computeTotals(lines: OrderLine[], surchargePct: number) {
   const base = lines.reduce((sum, l) => sum + l.unitPriceCents * l.qty, 0);
-  const surcharge = express ? Math.round((base * 3) / 10) : 0;
+  const surcharge = Math.round((base * surchargePct) / 100);
   const total = base + surcharge;
   const subtotal = Math.round((total * 100) / 116);
   return { base, surcharge, subtotal, tax: total - subtotal, total };
+}
+
+export function orderSurchargePct(order: Pick<Order, "express" | "surchargePct" | "baseCents" | "surchargeCents">): number {
+  if (!order.express) return 0;
+  if (order.surchargePct != null) return order.surchargePct;
+  if (!order.baseCents) return 0;
+  return Math.round((order.surchargeCents * 100) / order.baseCents);
 }
 
 const moneyFmt = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" });
@@ -80,6 +102,19 @@ const dateFmt = new Intl.DateTimeFormat("es-MX", {
   minute: "2-digit",
 });
 export const formatDate = (iso: string) => dateFmt.format(new Date(iso));
+
+const dateTimeFmt = new Intl.DateTimeFormat("es-MX", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+export const formatDateTime = (iso: string) => dateTimeFmt.format(new Date(iso));
+
+const shortDateFmt = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short" });
+export const formatShortDate = (iso: string) =>
+  shortDateFmt.format(new Date(iso)).replace(".", "").replace(/ de /g, " ");
 
 export const STATUS_META: Record<OrderStatus, { label: string; next?: OrderStatus; action?: string }> = {
   recibido: { label: "Recibido", next: "proceso", action: "Iniciar" },

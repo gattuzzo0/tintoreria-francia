@@ -41,6 +41,23 @@ export function deliveryWindow(today = new Date()): { min: string; max: string }
   };
 }
 
+export type RushRates = {
+  extraSamePct: number;
+  extraNextPct: number;
+  urgentPct: number;
+};
+
+export const DEFAULT_RUSH_RATES: RushRates = { extraSamePct: 30, extraNextPct: 30, urgentPct: 30 };
+
+/** Extra urgente mismo día, extra urgente día siguiente, urgente en 2 días. */
+export function rushPct(deliveryDate: string, express: boolean, rates: RushRates, today = new Date()): number {
+  if (!express || !deliveryDate) return 0;
+  if (deliveryDate === deliveryOn(0, today)) return rates.extraSamePct;
+  if (deliveryDate === deliveryOn(1, today)) return rates.extraNextPct;
+  if (deliveryDate === deliveryOn(2, today)) return rates.urgentPct;
+  return 0;
+}
+
 export function isAllowedDelivery(iso: string, express: boolean, today = new Date()): boolean {
   if (isSunday(parseIsoDate(iso))) return false;
   if (express) {
@@ -62,6 +79,12 @@ export function isAllowedDelivery(iso: string, express: boolean, today = new Dat
   if (deliveryOn(2, friday) !== "2026-10-26" || isAllowedDelivery("2026-10-25", true, friday)) {
     throw new Error("express sunday");
   }
+  const rates = { extraSamePct: 40, extraNextPct: 25, urgentPct: 15 };
+  if (rushPct("2026-10-20", true, rates, today) !== 40) throw new Error("rush same");
+  if (rushPct("2026-10-21", true, rates, today) !== 25) throw new Error("rush next");
+  if (rushPct("2026-10-22", true, rates, today) !== 15) throw new Error("rush two");
+  if (rushPct("2026-10-26", true, rates, friday) !== 15) throw new Error("rush sunday");
+  if (rushPct("2026-10-26", false, rates, today) !== 0) throw new Error("rush regular");
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(".", "");

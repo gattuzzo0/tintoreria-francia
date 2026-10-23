@@ -2,7 +2,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { garmentColor } from "@/lib/garment-colors";
 import { getBranchInfo } from "@/lib/branches";
 import { formatDeliveryLong } from "@/lib/delivery";
-import { formatMoney, PAYMENT_LABEL, type Customer, type Order } from "@/lib/pos-data";
+import { formatMoney, orderSurchargePct, PAYMENT_LABEL, type Customer, type Order } from "@/lib/pos-data";
 
 const STORE_INFO = {
   name: "Tintorería Francia",
@@ -92,7 +92,7 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
 
       <Sep />
       <Row label="Servicios" value={formatMoney(order.baseCents)} />
-      {order.express && <Row label="Cargo exprés (30%)" value={formatMoney(order.surchargeCents)} />}
+      {order.express && <Row label={`Cargo exprés (${orderSurchargePct(order)}%)`} value={formatMoney(order.surchargeCents)} />}
       <Row label="Subtotal" value={formatMoney(order.subtotalCents)} />
       <Row label="IVA 16%" value={formatMoney(order.taxCents)} />
       <div className="mt-1 flex justify-between border-t border-foreground pt-1 text-sm font-semibold">

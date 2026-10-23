@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ export function PosApp() {
 
 function PosShell() {
   const { isAdmin } = useAuth();
-  const { status, loadError, reload } = usePos();
+  const { status, loadError, reload, refreshSummary } = usePos();
   const [view, setView] = useState<View>("venta");
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
   const [lookupKey, setLookupKey] = useState(0);
@@ -37,6 +37,11 @@ function PosShell() {
     setPendingPhone(null);
     setView(v);
   };
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    void refreshSummary().catch(() => undefined);
+  }, [status, refreshSummary]);
 
   const registerFromSale = (phone: string) => {
     setPendingPhone(phone);

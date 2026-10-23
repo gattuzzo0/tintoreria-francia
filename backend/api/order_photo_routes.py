@@ -84,6 +84,28 @@ def _insert_photo(row: dict):
     return get_supabase().table("order_photos").insert(row).execute()
 
 
+def _folio_photos(folio: int):
+    return get_supabase().table("order_photos").select("id, object_key").eq("order_folio", folio).execute()
+
+
+def _delete_folio_photos(folio: int):
+    return get_supabase().table("order_photos").delete().eq("order_folio", folio).execute()
+
+
+def purge_order_photos(folio: int) -> int:
+    """Borra full y thumb en R2 y las filas ligadas a la orden."""
+    rows = _folio_photos(folio).data or []
+    for row in rows:
+        key = str(row.get("object_key") or "")
+        delete_object(key)
+        thumb = thumb_key(key)
+        if thumb:
+            delete_object(thumb)
+    if rows:
+        _delete_folio_photos(folio)
+    return len(rows)
+
+
 def _delete_photo_row(photo_id: str, staff_user_id: str):
     return (
         get_supabase()
