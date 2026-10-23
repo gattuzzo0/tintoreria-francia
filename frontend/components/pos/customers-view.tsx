@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Mail, Phone, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiHttpError } from "@/lib/api-client";
+import { fetchCustomerStats, type CustomerStat } from "@/lib/pos-api";
 import { formatMoney } from "@/lib/pos-data";
 import { readBranch } from "@/lib/branches";
 import { cn } from "@/lib/utils";
@@ -38,9 +39,9 @@ export function CustomersView({
   prefillPhone: string | null;
   onReturnToSale: () => void;
 }) {
-  const { customers, orders, delivered, addCustomer, updateDraft } = usePos();
-  const openBranch = readBranch();
+  const { customers, addCustomer, updateDraft, withAuth } = usePos();
   const fromSale = Boolean(prefillPhone);
+  const [stats, setStats] = useState<Map<string, CustomerStat>>(() => new Map());
 
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(fromSale);
@@ -48,6 +49,22 @@ export function CustomersView({
   const [phone, setPhone] = useState(() => sanitizePhoneInput(prefillPhone ?? ""));
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [newId, setNewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const branch = readBranch();
+    if (!branch) return;
+    let cancelled = false;
+    void withAuth((token) => fetchCustomerStats(token, branch))
+      .then((rows) => {
+        if (!cancelled) setStats(new Map(rows.map((row) => [row.customerId, row])));
+      })
+      .catch(() => {
+        if (!cancelled) setStats(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [withAuth]);
   const [busy, setBusy] = useState(false);
 
   const q = query.trim().toLowerCase();
@@ -221,10 +238,10 @@ export function CustomersView({
               </tr>
             ) : (
               filtered.map((c) => {
-                const mine = orders.filter((o) => o.customerId === c.id && o.branch === openBranch);
-                const deliveredMine = delivered.filter((o) => o.customerId === c.id && o.branch === openBranch);
-                const activeCount = mine.filter((o) => o.status !== "entregado").length;
-                const spent = mine.reduce((s, o) => s + o.totalCents, 0) + deliveredMine.reduce((s, o) => s + o.totalCents, 0);
+                const stat = stats.get(c.id);
+                const orderCount = stat?.orders ?? 0;
+                const activeCount = stat?.active ?? 0;
+                const spent = stat?.spentCents ?? 0;
                 return (
                   <tr key={c.id} className={cn(c.id === newId && "bg-accent/60")}>
                     <td className="px-4 py-3">
@@ -253,7 +270,7 @@ export function CustomersView({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="font-mono">{mine.length + deliveredMine.length}</span>
+                      <span className="font-mono">{orderCount}</span>
                       <span className="block text-xs text-muted-foreground">{activeCount} activas</span>
                     </td>
                     <td className="hidden px-4 py-3 text-right font-mono sm:table-cell">{formatMoney(spent)}</td>

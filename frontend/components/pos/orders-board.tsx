@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBranchInfo, readBranch } from "@/lib/branches";
 import { formatDeliveryShort } from "@/lib/delivery";
-import { fetchOrder } from "@/lib/pos-api";
+import { fetchOrder, fetchOrderPage } from "@/lib/pos-api";
 import { formatDate, formatDateTime, formatMoney, formatShortDate, PAYMENT_LABEL, STATUS_META, type Customer, type DeliveredOrder, type Order, type OrderStatus } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { readyMessage, whatsappSendUrl } from "@/lib/whatsapp";
@@ -21,18 +21,37 @@ const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 const DESKTOP_MQ = "(min-width: 768px)";
 
 export function OrdersBoard() {
-  const { orders: allOrders, delivered: allDelivered, getCustomer, advanceOrder } = usePos();
-  const openBranch = readBranch();
-  const orders = allOrders.filter((o) => o.branch === openBranch);
-  const delivered = allDelivered.filter((o) => o.branch === openBranch);
+  const { summary, getCustomer, advanceOrder, withAuth, patchSummary } = usePos();
   const searchRef = useRef<HTMLInputElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const requestId = useRef(0);
+  const loadingMoreRef = useRef(false);
   const [pending, setPending] = useState<number | null>(null);
   const [error, setError] = useState<{ folio: number; message: string } | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<OrderStatus>("recibido");
-  const [sweep, setSweep] = useState<{ from: OrderStatus; dir: 1 | -1; key: number } | null>(null);
+  const [sweep, setSweep] = useState<{
+    from: OrderStatus;
+    dir: 1 | -1;
+    key: number;
+    orders: Order[];
+    delivered: DeliveredOrder[];
+  } | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [notesFolio, setNotesFolio] = useState<number | null>(null);
+  const [rows, setRows] = useState<Order[]>([]);
+  const [deliveredRows, setDeliveredRows] = useState<DeliveredOrder[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const fetchKey = `${page}:${query}`;
+  const [fetchedKey, setFetchedKey] = useState(fetchKey);
+  if (fetchedKey !== fetchKey) {
+    setFetchedKey(fetchKey);
+    setLoading(true);
+    setLoadError(null);
+  }
 
   useEffect(() => {
     if (!sweep) return;
@@ -45,22 +64,81 @@ export function OrdersBoard() {
       searchRef.current?.focus();
     }
   }, []);
-  const notesOrder = orders.find((o) => o.folio === notesFolio) ?? null;
+
+  useEffect(() => {
+    const branch = readBranch();
+    const id = ++requestId.current;
+    if (!branch) return;
+    void withAuth((token) => fetchOrderPage(token, { status: page, branch, q: query || undefined }))
+      .then((res) => {
+        if (requestId.current !== id) return;
+        setRows(res.orders);
+        setDeliveredRows(res.delivered);
+        setHasMore(res.hasMore && res.orders.length + res.delivered.length > 0);
+      })
+      .catch((err: unknown) => {
+        if (requestId.current !== id) return;
+        setRows([]);
+        setDeliveredRows([]);
+        setHasMore(false);
+        setLoadError(err instanceof Error ? err.message : "No se pudieron leer las órdenes.");
+      })
+      .finally(() => {
+        if (requestId.current === id) setLoading(false);
+      });
+  }, [page, query, withAuth]);
+
+  const loadMore = useCallback(() => {
+    const branch = readBranch();
+    if (!branch || !hasMore || loading || loadingMoreRef.current) return;
+    const before = page === "entregado" ? deliveredRows.at(-1)?.folio : rows.at(-1)?.folio;
+    if (!before) return;
+    const id = requestId.current;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    void withAuth((token) => fetchOrderPage(token, { status: page, branch, before, q: query || undefined }))
+      .then((res) => {
+        if (requestId.current !== id) return;
+        const added = res.orders.length + res.delivered.length;
+        setRows((prev) => mergeByFolio(prev, res.orders));
+        setDeliveredRows((prev) => mergeByFolio(prev, res.delivered));
+        setHasMore(res.hasMore && added > 0);
+      })
+      .catch((err: unknown) => {
+        if (requestId.current !== id) return;
+        setLoadError(err instanceof Error ? err.message : "No se pudieron leer más órdenes.");
+      })
+      .finally(() => {
+        if (requestId.current === id) {
+          loadingMoreRef.current = false;
+          setLoadingMore(false);
+        }
+      });
+  }, [deliveredRows, hasMore, loading, page, query, rows, withAuth]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || loading || loadingMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) loadMore();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadMore]);
+
+  const notesOrder = rows.find((o) => o.folio === notesFolio) ?? null;
+  const remember = (order: Order) => setRows((prev) => prev.map((o) => (o.folio === order.folio ? order : o)));
   const toggle = (folio: number) => setExpanded((f) => (f === folio ? null : folio));
-  const visible = query ? orders.filter((o) => String(o.folio).includes(query)) : orders;
-  const deliveredVisible = query ? delivered.filter((o) => String(o.folio).includes(query)) : delivered;
-  const noMatch =
-    query.length > 0 && (page === "entregado" ? deliveredVisible.length === 0 : !visible.some((o) => o.status === page));
-  const active = orders.filter((o) => o.status !== "entregado").length;
-  const receivable =
-    orders.filter((o) => o.payment === "pendiente").reduce((s, o) => s + o.totalCents, 0) +
-    delivered.filter((o) => o.payment === "pendiente").reduce((s, o) => s + o.totalCents, 0);
+  const noMatch = query.length > 0 && !loading && (page === "entregado" ? deliveredRows.length === 0 : rows.length === 0);
+  const active = summary.recibido + summary.proceso + summary.listo;
 
   const advance = async (folio: number, next: OrderStatus) => {
     setPending(folio);
     setError(null);
     try {
       await advanceOrder(folio, next);
+      setRows((prev) => prev.filter((o) => o.folio !== folio));
+      patchSummary((current) => ({ ...current, [page]: Math.max(0, current[page] - 1), [next]: current[next] + 1 }));
     } catch (err) {
       setError({ folio, message: err instanceof Error ? err.message : "No se pudo actualizar la orden." });
     } finally {
@@ -71,13 +149,13 @@ export function OrdersBoard() {
   const showPage = (next: OrderStatus) => {
     if (next === page) return;
     const dir = COLUMNS.indexOf(next) > COLUMNS.indexOf(page) ? 1 : -1;
-    setSweep((prev) => ({ from: page, dir, key: (prev?.key ?? 0) + 1 }));
+    setSweep((prev) => ({ from: page, dir, key: (prev?.key ?? 0) + 1, orders: rows, delivered: deliveredRows }));
     setPage(next);
     setExpanded(null);
   };
 
   const pageProps = {
-    orders: visible,
+    orders: rows,
     query,
     expanded,
     pending,
@@ -92,7 +170,7 @@ export function OrdersBoard() {
     <section className="flex flex-col gap-6" aria-label="Órdenes">
       <div role="tablist" aria-label="Estado de las órdenes" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {COLUMNS.map((status) => {
-          const count = status === "entregado" ? delivered.length : orders.filter((o) => o.status === status).length;
+          const count = summary[status];
           const selected = page === status;
           return (
             <button
@@ -151,7 +229,7 @@ export function OrdersBoard() {
           </div>
           <div>
             <dt className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Por cobrar</dt>
-            <dd className="text-lg">{formatMoney(receivable)}</dd>
+            <dd className="text-lg">{formatMoney(summary.receivableCents)}</dd>
           </div>
         </dl>
       </div>
@@ -163,12 +241,12 @@ export function OrdersBoard() {
             aria-hidden
             inert
             className="orders-sweep-out pointer-events-none absolute inset-x-0 top-0"
-            style={{ "--sweep": sweep.dir }}
+            style={{ "--sweep": sweep.dir } as CSSProperties}
           >
             {sweep.from === "entregado" ? (
-              <DeliveredList rows={deliveredVisible} query={query} live={false} getCustomer={getCustomer} />
+              <DeliveredList rows={sweep.delivered} query={query} live={false} getCustomer={getCustomer} />
             ) : (
-              <OrderPage status={sweep.from} live={false} {...pageProps} />
+              <OrderPage status={sweep.from} live={false} {...pageProps} orders={sweep.orders} />
             )}
           </div>
         )}
@@ -178,18 +256,37 @@ export function OrdersBoard() {
           aria-labelledby={`orders-tab-${page}`}
           key={page}
           className={cn(sweep && "orders-sweep-in")}
-          style={sweep ? { "--sweep": sweep.dir } : undefined}
+          style={sweep ? ({ "--sweep": sweep.dir } as CSSProperties) : undefined}
         >
-          {page === "entregado" ? (
-            <DeliveredList rows={deliveredVisible} query={query} live getCustomer={getCustomer} />
+          {loading ? (
+            <p className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden /> Cargando órdenes…
+            </p>
+          ) : loadError ? (
+            <p role="alert" className="rounded-xl border border-destructive bg-destructive/10 px-3 py-10 text-center text-sm text-destructive">
+              {loadError}
+            </p>
+          ) : page === "entregado" ? (
+            <DeliveredList rows={deliveredRows} query={query} live getCustomer={getCustomer} />
           ) : (
             <OrderPage status={page} live {...pageProps} />
           )}
         </div>
+        {hasMore && !loading && <div ref={sentinelRef} className="h-px" aria-hidden />}
+        {loadingMore && (
+          <p className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" aria-hidden /> Cargando más órdenes…
+          </p>
+        )}
       </div>
-      <OrderNotesDialog order={notesOrder} onClose={() => setNotesFolio(null)} />
+      <OrderNotesDialog order={notesOrder} onClose={() => setNotesFolio(null)} onUpdated={remember} />
     </section>
   );
+}
+
+function mergeByFolio<T extends { folio: number }>(prev: T[], next: T[]) {
+  const seen = new Set(prev.map((row) => row.folio));
+  return [...prev, ...next.filter((row) => !seen.has(row.folio))];
 }
 
 function EmptyOrders({ query }: { query: string }) {

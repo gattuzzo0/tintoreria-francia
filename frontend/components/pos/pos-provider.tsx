@@ -18,14 +18,13 @@ import {
   createOrder,
   fetchCustomers,
   fetchDeliveryRates,
-  fetchOrders,
+  fetchOrderSummary,
   fetchServices,
-  type OrderBoard,
+  type OrderSummary,
 } from "@/lib/pos-api";
 import {
   computeTotals,
   type Customer,
-  type DeliveredOrder,
   type Order,
   type OrderLine,
   type OrderStatus,
@@ -65,8 +64,7 @@ type PosContextValue = {
   draftTotals: ReturnType<typeof computeTotals>;
   services: Service[];
   rushRates: RushRates;
-  orders: Order[];
-  delivered: DeliveredOrder[];
+  summary: OrderSummary;
   customers: Customer[];
   addItem: (id: string, color: string) => void;
   setQty: (id: string, color: string, qty: number) => void;
@@ -74,7 +72,7 @@ type PosContextValue = {
   updateDraft: (patch: Partial<Draft>) => void;
   clearDraft: () => void;
   checkout: () => Promise<Order | null>;
-  advanceOrder: (folio: number, status: OrderStatus) => Promise<void>;
+  advanceOrder: (folio: number, status: OrderStatus) => Promise<Order>;
   addNote: (folio: number, body: string) => Promise<Order>;
   addOrderPhoto: (folio: number, file: File) => Promise<Order>;
   clearOrderPhotos: (folio: number) => Promise<Order>;
@@ -82,6 +80,8 @@ type PosContextValue = {
   getCustomer: (id: string) => Customer | undefined;
   setServices: (services: Service[]) => void;
   setRushRates: (rates: RushRates) => void;
+  refreshSummary: () => Promise<void>;
+  patchSummary: (patch: (current: OrderSummary) => OrderSummary) => void;
   /** Ejecuta una llamada a la API; ante 401 refresca la sesión una vez y reintenta. */
   withAuth: <T>(call: (accessToken: string) => Promise<T>) => Promise<T>;
 };
@@ -97,8 +97,14 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [services, setServicesState] = useState<Service[]>([]);
   const [rushRates, setRushRatesState] = useState<RushRates>(DEFAULT_RUSH_RATES);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [delivered, setDelivered] = useState<DeliveredOrder[]>([]);
+  const [summary, setSummary] = useState<OrderSummary>({
+    recibido: 0,
+    proceso: 0,
+    listo: 0,
+    entregado: 0,
+    receivableCents: 0,
+    nextFolio: 1001,
+  });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const idempotencyKey = useRef<string>(crypto.randomUUID());
 
@@ -122,18 +128,15 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
         Promise.all([
           fetchServices(t),
           fetchCustomers(t),
-          fetchOrders(t),
           fetchDeliveryRates(t).catch(() => DEFAULT_RUSH_RATES),
         ]),
       ),
     [withAuth],
   );
 
-  const applyData = useCallback(([s, c, board, rates]: [Service[], Customer[], OrderBoard, RushRates]) => {
+  const applyData = useCallback(([s, c, rates]: [Service[], Customer[], RushRates]) => {
     setServicesState(s);
     setCustomers(c);
-    setOrders(board.orders);
-    setDelivered(board.delivered);
     setRushRatesState(rates);
     setLoadError(null);
     setStatus("ready");
@@ -229,40 +232,25 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     };
     const key = idempotencyKey.current;
     const order = await withAuth((t) => createOrder(t, body, key));
-    setOrders((prev) => [order, ...prev.filter((o) => o.folio !== order.folio)]);
+    setSummary((current) => ({
+      ...current,
+      nextFolio: Math.max(current.nextFolio, order.folio + 1),
+      recibido: current.recibido + 1,
+      receivableCents: current.receivableCents + (order.payment === "pendiente" ? order.totalCents : 0),
+    }));
     clearDraft();
     return order;
   }, [withAuth, draft, draftLines, clearDraft]);
 
   const advanceOrder = useCallback(
     async (folio: number, next: OrderStatus) => {
-      const updated = await withAuth((t) => advanceOrderStatus(t, folio, next));
-      if (updated.status === "entregado") {
-        setOrders((prev) => prev.filter((o) => o.folio !== folio));
-        setDelivered((prev) => [
-          {
-            folio: updated.folio,
-            customerId: updated.customerId,
-            payment: updated.payment,
-            totalCents: updated.totalCents,
-            statusUpdatedAt: updated.statusUpdatedAt ?? "",
-            branch: updated.branch,
-          },
-          ...prev.filter((row) => row.folio !== folio),
-        ]);
-        return;
-      }
-      setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
+      return withAuth((t) => advanceOrderStatus(t, folio, next));
     },
     [withAuth],
   );
 
   const addNote = useCallback(
-    async (folio: number, body: string) => {
-      const updated = await withAuth((t) => addOrderNote(t, folio, body));
-      setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
-      return updated;
-    },
+    async (folio: number, body: string) => withAuth((t) => addOrderNote(t, folio, body)),
     [withAuth],
   );
 
@@ -277,18 +265,13 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
           throw err;
         }
       });
-      setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
       return updated;
     },
     [withAuth],
   );
 
   const clearOrderPhotos = useCallback(
-    async (folio: number) => {
-      const updated = await withAuth((t) => deleteOrderPhotos(t, folio));
-      setOrders((prev) => prev.map((o) => (o.folio === folio ? updated : o)));
-      return updated;
-    },
+    async (folio: number) => withAuth((t) => deleteOrderPhotos(t, folio)),
     [withAuth],
   );
 
@@ -305,6 +288,14 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
 
   const setServices = useCallback((next: Service[]) => setServicesState(next.filter((s) => s.active)), []);
   const setRushRates = useCallback((next: RushRates) => setRushRatesState(next), []);
+  const refreshSummary = useCallback(async () => {
+    const branch = readBranch();
+    if (!branch) return;
+    setSummary(await withAuth((t) => fetchOrderSummary(t, branch)));
+  }, [withAuth]);
+  const patchSummary = useCallback((patch: (current: OrderSummary) => OrderSummary) => {
+    setSummary(patch);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -316,8 +307,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       draftTotals,
       services,
       rushRates,
-      orders,
-      delivered,
+      summary,
       customers,
       addItem,
       setQty,
@@ -333,9 +323,11 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       getCustomer,
       setServices,
       setRushRates,
+      refreshSummary,
+      patchSummary,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, orders, delivered, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, getCustomer, setServices, setRushRates],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, summary, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, getCustomer, setServices, setRushRates, refreshSummary, patchSummary],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;

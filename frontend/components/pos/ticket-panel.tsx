@@ -28,7 +28,7 @@ export function TicketPanel({
   lookupKey?: number;
   onSaleComplete?: () => void;
 }) {
-  const { draft, draftLines, draftTotals, orders, delivered, rushRates, setQty, updateDraft, checkout, getCustomer, withAuth } = usePos();
+  const { draft, draftLines, draftTotals, summary, rushRates, setQty, updateDraft, checkout, getCustomer, withAuth } = usePos();
   const photoInput = useRef<HTMLInputElement>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -54,7 +54,7 @@ export function TicketPanel({
     updateDraft({ express: false, deliveryDate: deliveryOn(REGULAR_MIN_DAYS) });
   };
 
-  const nextFolio = Math.max(1000, ...orders.map((o) => o.folio), ...delivered.map((o) => o.folio)) + 1;
+  const nextFolio = summary.nextFolio;
   const pieces = draftLines.reduce((n, l) => n + l.qty, 0);
 
   const onCheckout = async () => {

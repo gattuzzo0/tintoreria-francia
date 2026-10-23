@@ -50,9 +50,34 @@ export const fetchCustomers = (token: string) => apiFetch<Customer[]>("/api/cust
 export const createCustomer = (token: string, body: { name: string; phone: string }) =>
   apiFetch<Customer>("/api/customers", token, { method: "POST", body });
 
-export type OrderBoard = { orders: Order[]; delivered: DeliveredOrder[] };
+export type OrderBoard = { orders: Order[]; delivered: DeliveredOrder[]; hasMore: boolean };
 
-export const fetchOrders = (token: string) => apiFetch<OrderBoard>("/api/orders", token);
+export type OrderSummary = {
+  recibido: number;
+  proceso: number;
+  listo: number;
+  entregado: number;
+  receivableCents: number;
+  nextFolio: number;
+};
+
+export type CustomerStat = { customerId: string; orders: number; active: number; spentCents: number };
+
+export const fetchOrderPage = (
+  token: string,
+  params: { status: OrderStatus; branch: string; before?: number; q?: string },
+) => {
+  const qs = new URLSearchParams({ status: params.status, branch: params.branch });
+  if (params.before) qs.set("before", String(params.before));
+  if (params.q) qs.set("q", params.q);
+  return apiFetch<OrderBoard>(`/api/orders?${qs}`, token);
+};
+
+export const fetchOrderSummary = (token: string, branch: string) =>
+  apiFetch<OrderSummary>(`/api/orders/summary?${new URLSearchParams({ branch })}`, token);
+
+export const fetchCustomerStats = (token: string, branch: string) =>
+  apiFetch<CustomerStat[]>(`/api/orders/stats?${new URLSearchParams({ branch })}`, token);
 
 export const fetchOrder = (token: string, folio: number) => apiFetch<Order>(`/api/orders/${folio}`, token);
 
