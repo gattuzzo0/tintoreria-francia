@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { BarChart3, ClipboardList, LayoutGrid, LogOut, ShieldCheck, Tags, Users } from "lucide-react";
+import { BarChart3, ClipboardList, LayoutGrid, LogOut, Receipt, ShieldCheck, Tags, Users } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { readBranch } from "@/lib/branches";
 import { staffPhoneFromLoginEmail } from "@/lib/staff-login";
@@ -13,12 +13,13 @@ const subscribeNoop = () => () => {};
 const getBranchClient = () => readBranch() ?? "";
 const getBranchServer = () => "";
 
-export type View = "venta" | "ordenes" | "clientes" | "reportes" | "catalogo" | "admins";
+export type View = "venta" | "ordenes" | "clientes" | "contabilidad" | "reportes" | "catalogo" | "admins";
 
 const ITEMS = [
   { id: "venta", label: "Venta", icon: LayoutGrid, adminOnly: false },
   { id: "ordenes", label: "Órdenes", icon: ClipboardList, adminOnly: false },
   { id: "clientes", label: "Clientes", icon: Users, adminOnly: false },
+  { id: "contabilidad", label: "Contabilidad", icon: Receipt, adminOnly: false },
   { id: "reportes", label: "Reportes", icon: BarChart3, adminOnly: true },
   { id: "catalogo", label: "Catálogo", icon: Tags, adminOnly: true },
   { id: "admins", label: "Administradores", icon: ShieldCheck, adminOnly: true },

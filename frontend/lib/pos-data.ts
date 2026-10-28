@@ -11,11 +11,22 @@ export type Service = {
   active: boolean;
 };
 
-export type Customer = { id: string; name: string; phone: string; email?: string | null };
+export type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  rfc?: string | null;
+  legalName?: string | null;
+  fiscalZip?: string | null;
+  taxRegime?: string | null;
+  cfdiUse?: string | null;
+};
 
 export type OrderStatus = "recibido" | "proceso" | "listo" | "entregado";
 
 export type PaymentMethod = "efectivo" | "tarjeta" | "transferencia" | "pendiente";
+export type PaidMethod = "efectivo" | "tarjeta";
 
 export type OrderLine = {
   serviceId: string;
@@ -37,6 +48,7 @@ export type Order = {
   /** YYYY-MM-DD */
   deliveryDate: string;
   payment: PaymentMethod;
+  wantsInvoice?: boolean;
   /** null en órdenes anteriores a la columna branch. */
   branch: string | null;
   status: OrderStatus;
@@ -65,6 +77,7 @@ export type DeliveredOrder = {
   folio: number;
   customerId: string;
   payment: PaymentMethod;
+  wantsInvoice?: boolean;
   totalCents: number;
   /** Momento en que pasó a entregado. */
   statusUpdatedAt: string;

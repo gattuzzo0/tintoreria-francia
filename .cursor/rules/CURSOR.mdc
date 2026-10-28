@@ -1,0 +1,56 @@
+---
+description: Decisiones de producto y estado actual de Tintorería Francia. Referencia para no reabrir lo ya cerrado.
+alwaysApply: true
+---
+
+# Tintorería Francia — decisiones vigentes
+
+Si una regla genérica del repo (plantilla Vite, `VITE_*`, CRA) contradice esto, gana el código y este archivo. El producto es Next.js en `frontend/` y FastAPI en `backend/`. Detalle de arranque, env y caché: `README.md`.
+
+## Operación
+
+- Una caja por sucursal. No diseñar para varias cajas editando a la vez.
+- Roles: `admin` y `empleado`. Contabilidad la ven ambos. Reportes, Catálogo y Administradores solo admin.
+- Dinero en centavos enteros. Los precios del catálogo ya incluyen IVA 16%. `subtotal = round(total / 1.16)`, `IVA = total − subtotal`. El recargo exprés va dentro del total, no se suma otra vez.
+- Pagos nuevos: `tarjeta`, `efectivo`, `pendiente` (Al recoger). `transferencia` solo se muestra en órdenes viejas y en reportes. La API rechaza escrituras nuevas. No reescribir el RPC `create_order` ni el check de la base: las filas históricas deben seguir siendo válidas.
+
+## Factura (no es CFDI)
+
+No hay timbrado SAT ni PAC. `orders.wants_invoice` marca la orden para facturarla después, fuera del sistema. La marca es un update después del RPC de alta, no parte del RPC. Reintentar la misma llave de idempotencia puede dejarla en true; no la regresa a false.
+
+Preguntar «¿Desea facturar?» solo cuando entra el dinero, una vez por pago:
+
+- Al cobrar, si el pago no es Al recoger.
+- Al entregar, solo si la orden sigue pendiente. Primero se elige tarjeta o efectivo y se quita pendiente. Cerrar ese paso sin elegir no entrega ni cobra. Después va la misma pregunta.
+- Una orden ya pagada no se vuelve a preguntar al recoger.
+
+No, o cerrar la primera pregunta, cobra igual y deja la marca en false. Sí con ficha fiscal completa sigue sin volver a pedir datos. Sí con ficha incompleta no continúa hasta Guardar o «No facturar».
+
+En el paso fiscal, Escape, clic fuera y borrar un RFC inválido no cierran la venta ni abren la vista previa del ticket. Solo Guardar (datos válidos) o «No facturar» terminan. El diálogo de ticket no llama a `window.print()`.
+
+## Ficha fiscal
+
+Vive en el cliente y se lee en vivo. No se copia a la orden. Editarla después no cambia órdenes ya marcadas. Órdenes viejas siguen sin marca.
+
+Campos: RFC (opcional, no único, vacío = null, patrón SAT de 12/13 sin dígito verificador), razón social como en la constancia (mayúsculas, sin quitar «S.A. de C.V.»; el texto de ayuda pide omitir el régimen societario), CP fiscal de 5 dígitos, régimen y uso CFDI del catálogo 4.0. Sin default de uso: G03 es el primero de la lista, no viene elegido. No cruzar uso contra régimen ni tipo de persona.
+
+En la venta el formulario es obligatorio. En Clientes, Editar abre el mismo formulario con campos vacíos permitidos para borrar. El diálogo va fuera de la tabla.
+
+Catálogos duplicados a propósito en `backend/api/validation.py`, `frontend/lib/fiscal.ts`, `frontend/lib/validation.ts`, la migración y `supabase_schema.sql`. Si cambia uno, cambian todos. Incluye 621, CP01 y CN01. No incluye P01.
+
+Migraciones `000012` (rfc, wants_invoice) y `000013` (razón social, CP, régimen, uso). Se pegan en el SQL Editor; no se aplican solas. Sin `000013`, guardar la ficha responde 503. Los listados caen a columnas viejas si faltan; las escrituras no.
+
+## Contabilidad
+
+`GET /api/orders/invoices`, todas las sucursales, solo `wants_invoice`. Muestra folio, cliente, teléfono, ficha fiscal, estado, pago, sucursal, subtotal, IVA 16% y total. Si hay exprés, bajo el total dice que va incluido.
+
+## Caché de pantalla
+
+`Map` en memoria de la pestaña, 30 minutos. No está en `localStorage` ni en el servidor. Recargar la página lo borra.
+
+- Órdenes (`frontend/lib/orders-board-cache.ts`): clave sucursal + estado + búsqueda. El scroll se guarda en la misma entrada.
+- Reportes (`frontend/lib/reports-cache.ts`): clave desde + hasta.
+
+Cobrar o cambiar estado borra las dos. Notas y fotos solo borran Órdenes. Clientes, Contabilidad, Catálogo y Administradores se leen al abrirlos. Clientes, catálogo y tarifas de entrega quedan en memoria desde el arranque de la sesión.
+
+No bajar el plazo ni pasar la lista a la base para «refrescar siempre»: con una caja por sucursal el costo es una lectura de más, y el servidor ya rechaza con 409 si el estado cambió.

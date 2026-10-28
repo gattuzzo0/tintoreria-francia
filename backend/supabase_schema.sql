@@ -53,6 +53,18 @@ create table if not exists tintoreria_francia.customers (
   name text not null check (char_length(name) between 1 and 60),
   phone text not null unique check (phone ~ '^[0-9]{10}$'),
   email text,
+  rfc text check (rfc is null or rfc ~ '^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$'),
+  legal_name text check (legal_name is null or char_length(legal_name) between 1 and 254),
+  fiscal_zip text check (fiscal_zip is null or fiscal_zip ~ '^[0-9]{5}$'),
+  tax_regime text check (tax_regime is null or tax_regime in (
+    '601', '603', '605', '606', '607', '608', '610', '611', '612', '614', '615', '616',
+    '620', '621', '622', '623', '624', '625', '626'
+  )),
+  cfdi_use text check (cfdi_use is null or cfdi_use in (
+    'G01', 'G02', 'G03', 'I01', 'I02', 'I03', 'I04', 'I05', 'I06', 'I07', 'I08',
+    'D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08', 'D09', 'D10',
+    'S01', 'CP01', 'CN01'
+  )),
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -69,6 +81,7 @@ create table if not exists tintoreria_francia.orders (
   delivery_days integer not null check (delivery_days between 0 and 30),
   delivery_date date,
   payment_method text not null check (payment_method in ('efectivo', 'tarjeta', 'transferencia', 'pendiente')),
+  wants_invoice boolean not null default false,
   status text not null default 'recibido' check (status in ('recibido', 'proceso', 'listo', 'entregado')),
   notes text not null default '' check (char_length(notes) <= 280),
   base_cents integer not null default 0 check (base_cents >= 0),

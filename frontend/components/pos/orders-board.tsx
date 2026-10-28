@@ -5,28 +5,38 @@ import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyN
 import { Button } from "@/components/ui/button";
 import { getBranchInfo, readBranch } from "@/lib/branches";
 import { formatDeliveryShort } from "@/lib/delivery";
+import { ordersCacheKey, readOrdersCache, writeOrdersCache } from "@/lib/orders-board-cache";
 import { fetchOrder, fetchOrderPage } from "@/lib/pos-api";
 import { formatDate, formatDateTime, formatMoney, formatShortDate, PAYMENT_LABEL, STATUS_META, type Customer, type DeliveredOrder, type Order, type OrderStatus } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { readyMessage, whatsappSendUrl } from "@/lib/whatsapp";
 import { GarmentColorMark } from "./color-revolver";
+import { customerFiscal } from "./fiscal-form";
+import { InvoiceDialog, type InvoiceResult } from "./invoice-dialog";
 import { OrderNotesDialog } from "./order-notes-dialog";
 import { OrderPhoto } from "./order-photo";
 import { usePos } from "./pos-provider";
 
 const COLUMNS: OrderStatus[] = ["recibido", "proceso", "listo", "entregado"];
+
+function cachedPage(status: OrderStatus, q: string) {
+  const branch = readBranch();
+  if (!branch) return null;
+  return readOrdersCache(ordersCacheKey(branch, status, q));
+}
 const FOLIO_MAX_DIGITS = 9;
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 /** Tailwind `md` — autofocus del buscador solo en desktop. */
 const DESKTOP_MQ = "(min-width: 768px)";
 
 export function OrdersBoard() {
-  const { summary, getCustomer, advanceOrder, withAuth, patchSummary } = usePos();
+  const { summary, getCustomer, advanceOrder, saveCustomerFiscal, withAuth, patchSummary } = usePos();
   const searchRef = useRef<HTMLInputElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const loadingMoreRef = useRef(false);
   const [pending, setPending] = useState<number | null>(null);
+  const [settle, setSettle] = useState<Order | null>(null);
   const [error, setError] = useState<{ folio: number; message: string } | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<OrderStatus>("recibido");
@@ -39,18 +49,26 @@ export function OrdersBoard() {
   } | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [notesFolio, setNotesFolio] = useState<number | null>(null);
-  const [rows, setRows] = useState<Order[]>([]);
-  const [deliveredRows, setDeliveredRows] = useState<DeliveredOrder[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Order[]>(() => cachedPage("recibido", "")?.orders ?? []);
+  const [deliveredRows, setDeliveredRows] = useState<DeliveredOrder[]>(() => cachedPage("recibido", "")?.delivered ?? []);
+  const [hasMore, setHasMore] = useState(() => cachedPage("recibido", "")?.hasMore ?? false);
+  const [loading, setLoading] = useState(() => cachedPage("recibido", "") == null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fetchKey = `${page}:${query}`;
   const [fetchedKey, setFetchedKey] = useState(fetchKey);
   if (fetchedKey !== fetchKey) {
     setFetchedKey(fetchKey);
-    setLoading(true);
     setLoadError(null);
+    const hit = cachedPage(page, query);
+    if (hit) {
+      setRows(hit.orders);
+      setDeliveredRows(hit.delivered);
+      setHasMore(hit.hasMore);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
   }
 
   useEffect(() => {
@@ -69,12 +87,20 @@ export function OrdersBoard() {
     const branch = readBranch();
     const id = ++requestId.current;
     if (!branch) return;
+    const key = ordersCacheKey(branch, page, query);
+    if (readOrdersCache(key)) return;
     void withAuth((token) => fetchOrderPage(token, { status: page, branch, q: query || undefined }))
       .then((res) => {
         if (requestId.current !== id) return;
-        setRows(res.orders);
-        setDeliveredRows(res.delivered);
-        setHasMore(res.hasMore && res.orders.length + res.delivered.length > 0);
+        const next = {
+          orders: res.orders,
+          delivered: res.delivered,
+          hasMore: res.hasMore && res.orders.length + res.delivered.length > 0,
+        };
+        writeOrdersCache(key, next);
+        setRows(next.orders);
+        setDeliveredRows(next.delivered);
+        setHasMore(next.hasMore);
       })
       .catch((err: unknown) => {
         if (requestId.current !== id) return;
@@ -100,9 +126,13 @@ export function OrdersBoard() {
       .then((res) => {
         if (requestId.current !== id) return;
         const added = res.orders.length + res.delivered.length;
-        setRows((prev) => mergeByFolio(prev, res.orders));
-        setDeliveredRows((prev) => mergeByFolio(prev, res.delivered));
-        setHasMore(res.hasMore && added > 0);
+        const orders = mergeByFolio(rows, res.orders);
+        const delivered = mergeByFolio(deliveredRows, res.delivered);
+        const more = res.hasMore && added > 0;
+        setRows(orders);
+        setDeliveredRows(delivered);
+        setHasMore(more);
+        if (branch) writeOrdersCache(ordersCacheKey(branch, page, query), { orders, delivered, hasMore: more });
       })
       .catch((err: unknown) => {
         if (requestId.current !== id) return;
@@ -131,6 +161,25 @@ export function OrdersBoard() {
   const toggle = (folio: number) => setExpanded((f) => (f === folio ? null : folio));
   const noMatch = query.length > 0 && !loading && (page === "entregado" ? deliveredRows.length === 0 : rows.length === 0);
   const active = summary.recibido + summary.proceso + summary.listo;
+
+  const completeDelivery = async (order: Order, result: InvoiceResult) => {
+    if (!result.payment) throw new Error("Elige un método de pago.");
+    setPending(order.folio);
+    setError(null);
+    try {
+      await advanceOrder(order.folio, "entregado", { payment: result.payment, wantsInvoice: result.wantsInvoice });
+      setRows((prev) => prev.filter((o) => o.folio !== order.folio));
+      setSettle(null);
+      patchSummary((current) => ({
+        ...current,
+        listo: Math.max(0, current.listo - 1),
+        entregado: current.entregado + 1,
+        receivableCents: Math.max(0, current.receivableCents - order.totalCents),
+      }));
+    } finally {
+      setPending(null);
+    }
+  };
 
   const advance = async (folio: number, next: OrderStatus) => {
     setPending(folio);
@@ -164,6 +213,10 @@ export function OrdersBoard() {
     onToggle: toggle,
     onNotes: setNotesFolio,
     onAdvance: (folio: number, next: OrderStatus) => void advance(folio, next),
+    onDeliver: (order: Order) => {
+      if (order.payment === "pendiente") setSettle(order);
+      else void advance(order.folio, "entregado");
+    },
   };
 
   return (
@@ -280,7 +333,30 @@ export function OrdersBoard() {
         )}
       </div>
       <OrderNotesDialog order={notesOrder} onClose={() => setNotesFolio(null)} onUpdated={remember} />
+      <InvoiceDialog
+        open={settle !== null}
+        customerName={settle ? (getCustomer(settle.customerId)?.name ?? "Cliente") : ""}
+        fiscal={settle ? customerFiscal(getCustomer(settle.customerId) ?? { rfc: null }) : customerFiscal({})}
+        askPayment
+        onAbort={() => setSettle(null)}
+        onSaveFiscal={async (fiscal) => {
+          if (!settle) return;
+          await saveCustomerFiscal(settle.customerId, fiscal);
+        }}
+        onDone={async (result) => {
+          if (!settle) return;
+          await completeDelivery(settle, result);
+        }}
+      />
     </section>
+  );
+}
+
+function InvoiceMark() {
+  return (
+    <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+      Facturar
+    </span>
   );
 }
 
@@ -317,6 +393,7 @@ function OrderPage({
   onToggle,
   onNotes,
   onAdvance,
+  onDeliver,
   live,
   detailsOnly = false,
 }: {
@@ -330,6 +407,7 @@ function OrderPage({
   onToggle: (folio: number) => void;
   onNotes: (folio: number) => void;
   onAdvance: (folio: number, next: OrderStatus) => void;
+  onDeliver: (order: Order) => void;
   live: boolean;
   detailsOnly?: boolean;
 }) {
@@ -368,6 +446,7 @@ function OrderPage({
                               <Zap className="size-3" aria-hidden /> Exprés
                             </span>
                           )}
+                          {o.wantsInvoice && <InvoiceMark />}
                           {(o.notes || o.photoId || (o.photoIds?.length ?? 0) > 0 || o.staffNotes.length > 0) && (
                             <button
                               type="button"
@@ -519,7 +598,7 @@ function OrderPage({
                               disabled={pending === o.folio}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onAdvance(o.folio, meta.next!);
+                                onDeliver(o);
                               }}
                             >
                               {meta.action} <ArrowRight aria-hidden />
@@ -642,7 +721,10 @@ function DeliveredList({
                   className="grid w-full grid-cols-[5.5rem_minmax(0,1fr)_5.5rem_auto_1.5rem] items-center gap-3 px-4 py-3 text-left outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/30"
                 >
                   <span className="font-mono text-sm font-medium">#{row.folio}</span>
-                  <span className="truncate text-sm">{getCustomer(row.customerId)?.name ?? "—"}</span>
+                  <span className="flex min-w-0 items-center gap-2 truncate text-sm">
+                    <span className="truncate">{getCustomer(row.customerId)?.name ?? "—"}</span>
+                    {row.wantsInvoice && <InvoiceMark />}
+                  </span>
                   <span className="font-mono text-sm">{row.statusUpdatedAt ? formatShortDate(row.statusUpdatedAt) : "—"}</span>
                   <span
                     className={cn("text-right font-mono text-sm", row.payment === "pendiente" && "text-destructive")}
@@ -674,6 +756,7 @@ function DeliveredList({
                     onToggle={() => {}}
                     onNotes={() => setNotesOrder(detail)}
                     onAdvance={() => {}}
+                    onDeliver={() => {}}
                     live={live}
                     detailsOnly
                   />

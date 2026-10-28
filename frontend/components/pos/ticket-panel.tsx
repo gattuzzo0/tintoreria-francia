@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { NOTES_MAX, sanitizeText } from "@/lib/validation";
 import { GarmentColorMark } from "./color-revolver";
 import { CheckoutConfirmDialog } from "./checkout-confirm-dialog";
+import { customerFiscal } from "./fiscal-form";
+import { InvoiceDialog } from "./invoice-dialog";
 import { CustomerLookup } from "./customer-lookup";
 import { DeliveryDateDialog, ExpressDeliveryDialog } from "./delivery-date-dialog";
 import { ReceiptDialog } from "./receipt-dialog";
@@ -28,7 +30,7 @@ export function TicketPanel({
   lookupKey?: number;
   onSaleComplete?: () => void;
 }) {
-  const { draft, draftLines, draftTotals, summary, rushRates, setQty, updateDraft, checkout, getCustomer, withAuth } = usePos();
+  const { draft, draftLines, draftTotals, summary, rushRates, setQty, updateDraft, checkout, getCustomer, saveCustomerFiscal, withAuth } = usePos();
   const photoInput = useRef<HTMLInputElement>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -42,6 +44,7 @@ export function TicketPanel({
   const [pickingDate, setPickingDate] = useState(false);
   const [pickingExpress, setPickingExpress] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [invoicing, setInvoicing] = useState(false);
   const deliveryOk =
     draft.express !== null && Boolean(draft.deliveryDate) && isAllowedDelivery(draft.deliveryDate, draft.express);
 
@@ -57,18 +60,21 @@ export function TicketPanel({
   const nextFolio = summary.nextFolio;
   const pieces = draftLines.reduce((n, l) => n + l.qty, 0);
 
-  const onCheckout = async () => {
+  const finishSale = async (wantsInvoice: boolean) => {
     setCheckoutError(null);
     setBusy(true);
     try {
-      const order = await checkout();
-      if (!order) return;
+      const order = await checkout(wantsInvoice);
+      if (!order) throw new Error("No se pudo registrar la orden.");
       setConfirming(false);
+      setInvoicing(false);
       setReceipt(order);
       onSaleComplete?.();
     } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : "No se pudo registrar la orden.");
-      setConfirming(false);
+      const message = err instanceof Error ? err.message : "No se pudo registrar la orden.";
+      setCheckoutError(message);
+      if (draft.payment === "pendiente") setConfirming(false);
+      throw new Error(message);
     } finally {
       setBusy(false);
     }
@@ -347,11 +353,31 @@ export function TicketPanel({
         payment={draft.payment}
         busy={busy}
         onPaymentChange={(payment) => updateDraft({ payment })}
-        onConfirm={() => void onCheckout()}
+        onConfirm={() => {
+          if (draft.payment === "pendiente") {
+            void finishSale(false).catch(() => {});
+            return;
+          }
+          setConfirming(false);
+          setInvoicing(true);
+        }}
         onClose={() => {
           if (!busy) setConfirming(false);
         }}
       />
+      {customer && (
+        <InvoiceDialog
+          open={invoicing}
+          customerName={customer.name}
+          fiscal={customerFiscal(customer)}
+          askPayment={false}
+          onSaveFiscal={async (fiscal) => {
+            await saveCustomerFiscal(customer.id, fiscal);
+          }}
+          onDone={(result) => finishSale(result.wantsInvoice)}
+          onAbort={() => setInvoicing(false)}
+        />
+      )}
       <ReceiptDialog
         order={receipt}
         onClose={() => setReceipt(null)}

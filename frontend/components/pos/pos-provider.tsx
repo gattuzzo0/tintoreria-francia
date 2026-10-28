@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
 import { DEFAULT_RUSH_RATES, rushPct, type RushRates } from "@/lib/delivery";
 import { lineKey, parseLineKey } from "@/lib/garment-colors";
+import { clearOrdersCache } from "@/lib/orders-board-cache";
+import { clearReportsCache } from "@/lib/reports-cache";
 import {
   addOrderNote,
   attachOrderPhoto,
@@ -16,6 +18,7 @@ import {
   advanceOrderStatus,
   createCustomer,
   createOrder,
+  updateCustomerFiscal,
   fetchCustomers,
   fetchDeliveryRates,
   fetchOrderSummary,
@@ -28,6 +31,7 @@ import {
   type Order,
   type OrderLine,
   type OrderStatus,
+  type PaidMethod,
   type PaymentMethod,
   type Service,
 } from "@/lib/pos-data";
@@ -71,12 +75,26 @@ type PosContextValue = {
   clearService: (id: string) => void;
   updateDraft: (patch: Partial<Draft>) => void;
   clearDraft: () => void;
-  checkout: () => Promise<Order | null>;
-  advanceOrder: (folio: number, status: OrderStatus) => Promise<Order>;
+  checkout: (wantsInvoice: boolean) => Promise<Order | null>;
+  advanceOrder: (
+    folio: number,
+    status: OrderStatus,
+    settle?: { payment: PaidMethod; wantsInvoice: boolean },
+  ) => Promise<Order>;
   addNote: (folio: number, body: string) => Promise<Order>;
   addOrderPhoto: (folio: number, file: File) => Promise<Order>;
   clearOrderPhotos: (folio: number) => Promise<Order>;
   addCustomer: (data: { name: string; phone: string }) => Promise<Customer>;
+  saveCustomerFiscal: (
+    id: string,
+    fiscal: {
+      rfc?: string | null;
+      legalName?: string | null;
+      fiscalZip?: string | null;
+      taxRegime?: string | null;
+      cfdiUse?: string | null;
+    },
+  ) => Promise<Customer>;
   getCustomer: (id: string) => Customer | undefined;
   setServices: (services: Service[]) => void;
   setRushRates: (rates: RushRates) => void;
@@ -216,7 +234,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     idempotencyKey.current = crypto.randomUUID();
   }, []);
 
-  const checkout = useCallback(async (): Promise<Order | null> => {
+  const checkout = useCallback(async (wantsInvoice: boolean): Promise<Order | null> => {
     if (!draft.customerId || draftLines.length === 0 || draft.express === null || !draft.deliveryDate) return null;
     const branch = readBranch();
     if (!branch) throw new Error("Elige una sucursal al iniciar sesión.");
@@ -227,11 +245,14 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       payment: draft.payment,
       branch,
       notes: sanitizeText(draft.notes, NOTES_MAX).trim(),
+      wantsInvoice: wantsInvoice && draft.payment !== "pendiente",
       ...(draft.photoId ? { photoId: draft.photoId } : {}),
       lines: draftLines.map((l) => ({ serviceId: l.serviceId, qty: l.qty, color: l.color })),
     };
     const key = idempotencyKey.current;
     const order = await withAuth((t) => createOrder(t, body, key));
+    clearOrdersCache();
+    clearReportsCache();
     setSummary((current) => ({
       ...current,
       nextFolio: Math.max(current.nextFolio, order.folio + 1),
@@ -243,14 +264,21 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   }, [withAuth, draft, draftLines, clearDraft]);
 
   const advanceOrder = useCallback(
-    async (folio: number, next: OrderStatus) => {
-      return withAuth((t) => advanceOrderStatus(t, folio, next));
+    async (folio: number, next: OrderStatus, settle?: { payment: PaidMethod; wantsInvoice: boolean }) => {
+      const updated = await withAuth((t) => advanceOrderStatus(t, folio, next, settle));
+      clearOrdersCache();
+      clearReportsCache();
+      return updated;
     },
     [withAuth],
   );
 
   const addNote = useCallback(
-    async (folio: number, body: string) => withAuth((t) => addOrderNote(t, folio, body)),
+    async (folio: number, body: string) => {
+      const updated = await withAuth((t) => addOrderNote(t, folio, body));
+      clearOrdersCache();
+      return updated;
+    },
     [withAuth],
   );
 
@@ -265,13 +293,18 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
           throw err;
         }
       });
+      clearOrdersCache();
       return updated;
     },
     [withAuth],
   );
 
   const clearOrderPhotos = useCallback(
-    async (folio: number) => withAuth((t) => deleteOrderPhotos(t, folio)),
+    async (folio: number) => {
+      const updated = await withAuth((t) => deleteOrderPhotos(t, folio));
+      clearOrdersCache();
+      return updated;
+    },
     [withAuth],
   );
 
@@ -279,6 +312,24 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     async (data: { name: string; phone: string }) => {
       const customer = await withAuth((t) => createCustomer(t, data));
       setCustomers((prev) => [customer, ...prev]);
+      return customer;
+    },
+    [withAuth],
+  );
+
+  const saveCustomerFiscal = useCallback(
+    async (
+      id: string,
+      fiscal: {
+        rfc?: string | null;
+        legalName?: string | null;
+        fiscalZip?: string | null;
+        taxRegime?: string | null;
+        cfdiUse?: string | null;
+      },
+    ) => {
+      const customer = await withAuth((t) => updateCustomerFiscal(t, id, fiscal));
+      setCustomers((prev) => prev.map((c) => (c.id === id ? customer : c)));
       return customer;
     },
     [withAuth],
@@ -320,6 +371,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       addOrderPhoto,
       clearOrderPhotos,
       addCustomer,
+      saveCustomerFiscal,
       getCustomer,
       setServices,
       setRushRates,
@@ -327,7 +379,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       patchSummary,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, summary, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, getCustomer, setServices, setRushRates, refreshSummary, patchSummary],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, summary, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, saveCustomerFiscal, getCustomer, setServices, setRushRates, refreshSummary, patchSummary],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;

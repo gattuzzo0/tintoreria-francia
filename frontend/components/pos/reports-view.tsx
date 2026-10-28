@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { formatMoney, PAYMENT_LABEL } from "@/lib/pos-data";
+import { readReportCache, writeReportCache } from "@/lib/reports-cache";
 import { fetchReport, type Report } from "@/lib/reports-api";
 import { cn } from "@/lib/utils";
 import { BarList, CARD, DailyChart, Heatmap, Kpi, LABEL, SectionTitle, Stat } from "./report-charts";
@@ -59,16 +60,28 @@ export function ReportsView() {
   const { withAuth } = usePos();
   const [preset, setPreset] = useState<Preset>("30d");
   const [range, setRange] = useState(() => presetRange("30d"));
-  const [report, setReport] = useState<Report | null>(null);
+  const [report, setReport] = useState<Report | null>(() => {
+    const initial = presetRange("30d");
+    return readReportCache(initial.start, initial.end);
+  });
   const [error, setError] = useState<string | null>(null);
   const invalid = rangeError(range.start, range.end);
+  const fetchKey = invalid ? "" : `${range.start}:${range.end}`;
+  const [fetchedKey, setFetchedKey] = useState(fetchKey);
+  if (fetchedKey !== fetchKey) {
+    setFetchedKey(fetchKey);
+    setError(null);
+    const hit = readReportCache(range.start, range.end);
+    if (hit) setReport(hit);
+  }
 
   useEffect(() => {
-    if (invalid) return;
+    if (invalid || readReportCache(range.start, range.end)) return;
     let cancelled = false;
     withAuth((t) => fetchReport(t, range.start, range.end)).then(
       (r) => {
         if (cancelled) return;
+        writeReportCache(range.start, range.end, r);
         setReport(r);
         setError(null);
       },
