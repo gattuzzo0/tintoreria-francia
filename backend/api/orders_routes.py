@@ -7,12 +7,13 @@ from datetime import date, datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.deps import require_pos_staff, require_staff_writer
 from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo, purge_order_photos
 from api.supabase_client import RpcError, call_rpc, get_supabase
-from api.validation import NOTES_MAX, sanitize_text
+from api.validation import NOTES_MAX, delivery_patch, invoice_on_create, sanitize_text
 
 logger = logging.getLogger(__name__)
 orders_router = APIRouter()
@@ -24,13 +25,15 @@ NEXT_STATUS: dict[str, str] = {"recibido": "proceso", "proceso": "listo", "listo
 MAX_LINES = 50
 ORDERS_LIMIT = 500
 PAGE_SIZE = 6
+_DELIVERED = "folio, customer_id, payment_method, wants_invoice, total_cents, status_updated_at, branch"
+_DELIVERED_PLAIN = "folio, customer_id, payment_method, total_cents, status_updated_at, branch"
 GARMENT_COLORS = frozenset(
     {"rojo", "amarillo", "verde", "azul", "azul_claro", "morado", "rosa", "naranja", "cafe", "negro", "blanco"}
 )
 Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
-    "folio, customer_id, express, delivery_date, payment_method, status, notes, branch, created_at, status_updated_at, "
+    "folio, customer_id, express, delivery_date, payment_method, wants_invoice, status, notes, branch, created_at, status_updated_at, "
     "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
     "order_lines(service_id, name, unit, unit_price_cents, qty, color), "
     "order_notes(id, body, created_at)"
@@ -64,7 +67,15 @@ class OrderCreate(BaseModel):
     branch: Branch
     notes: str = Field(default="", max_length=2000)
     photo_id: str | None = Field(default=None, alias="photoId")
+    wants_invoice: bool = Field(default=False, alias="wantsInvoice")
     lines: list[OrderLineIn] = Field(min_length=1, max_length=MAX_LINES)
+
+    @field_validator("payment")
+    @classmethod
+    def payment_ok(cls, v: str) -> str:
+        if v == "transferencia":
+            raise ValueError("Elige efectivo, tarjeta o al recoger.")
+        return v
 
     @field_validator("notes")
     @classmethod
@@ -90,7 +101,11 @@ class OrderCreate(BaseModel):
 
 
 class StatusUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     status: OrderStatus
+    payment: PaymentMethod | None = None
+    wants_invoice: bool = Field(default=False, alias="wantsInvoice")
 
 
 class NoteCreate(BaseModel):
@@ -137,6 +152,7 @@ class DeliveredOut(BaseModel):
     folio: int
     customerId: str
     payment: PaymentMethod
+    wantsInvoice: bool = False
     totalCents: int
     statusUpdatedAt: str
     branch: Branch | None = None
@@ -149,6 +165,7 @@ class OrderOut(BaseModel):
     express: bool
     deliveryDate: str
     payment: PaymentMethod
+    wantsInvoice: bool = False
     branch: Branch | None
     status: OrderStatus
     notes: str
@@ -187,6 +204,25 @@ class CustomerStatOut(BaseModel):
     spentCents: int
 
 
+class InvoiceOrderOut(BaseModel):
+    folio: int
+    customerName: str
+    phone: str
+    rfc: str | None = None
+    legalName: str | None = None
+    fiscalZip: str | None = None
+    taxRegime: str | None = None
+    cfdiUse: str | None = None
+    status: OrderStatus
+    payment: PaymentMethod
+    subtotalCents: int
+    taxCents: int
+    surchargeCents: int
+    totalCents: int
+    branch: str | None = None
+    createdAt: str
+
+
 def _iso(value) -> str:
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
@@ -219,6 +255,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
         express=bool(row["express"]),
         deliveryDate=str(row["delivery_date"]),
         payment=row["payment_method"],
+        wantsInvoice=bool(row.get("wants_invoice")),
         branch=row.get("branch"),
         status=row["status"],
         notes=row.get("notes") or "",
@@ -243,23 +280,24 @@ def _query_orders(columns: str, folio: int):
     return get_supabase().table("orders").select(columns).eq("folio", folio).limit(1).execute()
 
 
+def _without_new_columns(columns: str) -> str:
+    return columns.replace("wants_invoice, ", "").replace(", order_photos(id, created_at)", "")
+
+
 def _fetch_order(folio: int):
     try:
         return _query_orders(_SELECT, folio)
     except Exception:
-        logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
-        return _query_orders(_SELECT_PLAIN, folio)
+        logger.warning("Lectura de orden sin columnas nuevas; aplica migraciones 000007 y 000012")
+        return _query_orders(_without_new_columns(_SELECT), folio)
 
 
-def _update_status(folio: int, current: str, new: str):
-    return (
-        get_supabase()
-        .table("orders")
-        .update({"status": new, "status_updated_at": datetime.now(timezone.utc).isoformat()})
-        .eq("folio", folio)
-        .eq("status", current)
-        .execute()
-    )
+def _update_status(folio: int, current: str, patch: dict):
+    return get_supabase().table("orders").update(patch).eq("folio", folio).eq("status", current).execute()
+
+
+def _set_wants_invoice(folio: int):
+    return get_supabase().table("orders").update({"wants_invoice": True}).eq("folio", folio).execute()
 
 
 def _insert_note(folio: int, body: str, staff_user_id: str):
@@ -287,6 +325,7 @@ def _delivered_out(row: dict) -> DeliveredOut:
         folio=int(row["folio"]),
         customerId=str(row["customer_id"]),
         payment=row["payment_method"],
+        wantsInvoice=bool(row.get("wants_invoice")),
         totalCents=int(row["total_cents"]),
         statusUpdatedAt=_iso(row["status_updated_at"]),
         branch=row.get("branch"),
@@ -336,7 +375,7 @@ def _rows_for_folios(columns: str, folios: list[int]) -> list[dict]:
 
 def _fetch_page(order_status: str, branch: str, before: int | None, q: str) -> tuple[list[dict], bool]:
     columns = (
-        "folio, customer_id, payment_method, total_cents, status_updated_at, branch"
+        _DELIVERED
         if order_status == "entregado"
         else _SELECT
     )
@@ -347,17 +386,15 @@ def _fetch_page(order_status: str, branch: str, before: int | None, q: str) -> t
         try:
             return _rows_for_folios(columns, chosen), has_more
         except Exception:
-            if order_status == "entregado":
-                raise
-            logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
-            return _rows_for_folios(_SELECT_PLAIN, chosen), has_more
+            logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
+            fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
+            return _rows_for_folios(fallback, chosen), has_more
     try:
         res = _page_rows(columns, order_status, branch, before)
     except Exception:
-        if order_status == "entregado":
-            raise
-        logger.warning("order_photos no disponible; aplica backend/migrations/000007_order_photos.sql")
-        res = _page_rows(_SELECT_PLAIN, order_status, branch, before)
+        logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
+        fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
+        res = _page_rows(fallback, order_status, branch, before)
     rows = res.data or []
     return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE
 
@@ -419,6 +456,86 @@ def _fetch_customer_stats(branch: str) -> list[CustomerStatOut]:
     return list(grouped.values())
 
 
+class _MissingInvoiceColumn(Exception):
+    pass
+
+
+def _fetch_invoice_orders():
+    try:
+        return (
+            get_supabase()
+            .table("orders")
+            .select(
+                "folio, customer_id, payment_method, status, subtotal_cents, tax_cents, "
+                "surcharge_cents, total_cents, branch, created_at"
+            )
+            .eq("wants_invoice", True)
+            .order("folio", desc=True)
+            .limit(ORDERS_LIMIT)
+            .execute()
+        )
+    except APIError as exc:
+        if exc.code == "42703":
+            raise _MissingInvoiceColumn from None
+        raise
+
+
+_CUSTOMER_LOOKUPS = (
+    "id, name, phone, rfc, legal_name, fiscal_zip, tax_regime, cfdi_use",
+    "id, name, phone, rfc",
+    "id, name, phone",
+)
+
+
+def _customers_by_id(ids: list[str]) -> dict[str, dict]:
+    found: dict[str, dict] = {}
+    selects = list(_CUSTOMER_LOOKUPS)
+    for start in range(0, len(ids), 80):
+        part = ids[start : start + 80]
+        while selects:
+            try:
+                res = get_supabase().table("customers").select(selects[0]).in_("id", part).execute()
+                break
+            except APIError as exc:
+                if exc.code != "42703" or len(selects) == 1:
+                    raise
+                selects.pop(0)
+                logger.warning("Lectura fiscal de clientes incompleta; aplica migraciones 000012 y 000013")
+        for row in res.data or []:
+            found[str(row["id"])] = row
+    return found
+
+
+def _invoice_rows() -> list[InvoiceOrderOut]:
+    res = _fetch_invoice_orders()
+    rows = res.data or []
+    customers = _customers_by_id(sorted({str(row["customer_id"]) for row in rows}))
+    out: list[InvoiceOrderOut] = []
+    for row in rows:
+        customer = customers.get(str(row["customer_id"]), {})
+        out.append(
+            InvoiceOrderOut(
+                folio=int(row["folio"]),
+                customerName=str(customer.get("name") or "Cliente no encontrado"),
+                phone=str(customer.get("phone") or ""),
+                rfc=customer.get("rfc") or None,
+                legalName=customer.get("legal_name") or None,
+                fiscalZip=customer.get("fiscal_zip") or None,
+                taxRegime=customer.get("tax_regime") or None,
+                cfdiUse=customer.get("cfdi_use") or None,
+                status=row["status"],
+                payment=row["payment_method"],
+                subtotalCents=int(row["subtotal_cents"]),
+                taxCents=int(row["tax_cents"]),
+                surchargeCents=int(row["surcharge_cents"]),
+                totalCents=int(row["total_cents"]),
+                branch=row.get("branch"),
+                createdAt=_iso(row["created_at"]),
+            )
+        )
+    return out
+
+
 @orders_router.get("", response_model=OrderPageOut)
 async def list_orders(
     order_status: OrderStatus = Query(alias="status"),
@@ -466,6 +583,23 @@ async def customer_order_stats(
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudieron leer las órdenes") from None
 
 
+@orders_router.get("/invoices", response_model=list[InvoiceOrderOut])
+async def list_invoice_orders(_staff: dict = Depends(require_pos_staff)):
+    try:
+        return await asyncio.to_thread(_invoice_rows)
+    except _MissingInvoiceColumn:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Falta la columna de factura. Aplica la migración 000012 en Supabase.",
+        ) from None
+    except Exception:
+        logger.exception("list_invoice_orders falló")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudieron leer las órdenes por facturar",
+        ) from None
+
+
 @orders_router.get("/{folio}", response_model=OrderOut)
 async def get_order(folio: int, _staff: dict = Depends(require_pos_staff)):
     return _row_to_order_out(await _get_order_or_404(folio))
@@ -507,6 +641,16 @@ async def create_order(
         logger.exception("create_order RPC falló user_id=%s", staff["user_id"])
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo registrar la orden") from None
 
+    if invoice_on_create(body.payment, body.wants_invoice):
+        try:
+            await asyncio.to_thread(_set_wants_invoice, int(folio))
+        except Exception:
+            logger.exception("wants_invoice falló folio=%s", folio)
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="La orden se registró pero no se pudo marcar para facturar. Intenta de nuevo.",
+            ) from None
+
     if body.photo_id:
         try:
             await asyncio.to_thread(attach_order_photo, body.photo_id, int(folio), staff["user_id"])
@@ -529,7 +673,12 @@ async def advance_order(folio: int, body: StatusUpdate, staff: dict = Depends(re
             detail=f"No se puede pasar de '{current}' a '{body.status}'",
         )
     try:
-        res = await asyncio.to_thread(_update_status, folio, current, body.status)
+        patch = delivery_patch(row["payment_method"], body.status, body.payment, body.wants_invoice)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from None
+    patch["status_updated_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        res = await asyncio.to_thread(_update_status, folio, current, patch)
     except Exception:
         logger.exception("advance_order falló folio=%s", folio)
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo actualizar la orden") from None

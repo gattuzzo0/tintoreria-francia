@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Banknote, Clock, CreditCard, Repeat } from "lucide-react";
+import { Banknote, Clock, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDeliveryLong } from "@/lib/delivery";
 import { formatMoney, type PaymentMethod } from "@/lib/pos-data";
@@ -12,7 +12,6 @@ const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 const PAYMENTS: { id: PaymentMethod; label: string; icon: typeof CreditCard }[] = [
   { id: "tarjeta", label: "Tarjeta", icon: CreditCard },
   { id: "efectivo", label: "Efectivo", icon: Banknote },
-  { id: "transferencia", label: "Transfer.", icon: Repeat },
   { id: "pendiente", label: "Al recoger", icon: Clock },
 ];
 
@@ -89,7 +88,7 @@ export function CheckoutConfirmDialog({
             <legend className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
               Método de pago
             </legend>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {PAYMENTS.map(({ id, label, icon: Icon }) => {
                 const active = payment === id;
                 return (

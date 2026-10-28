@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { AccountingView } from "./accounting-view";
 import { AdminsView } from "./admins-view";
 import { AppNav, type View } from "./app-nav";
 import { BranchGate } from "./branch-gate";
@@ -77,6 +78,7 @@ function PosShell() {
               </div>
             )}
             {view === "ordenes" && <OrdersBoard />}
+            {view === "contabilidad" && <AccountingView />}
             {view === "clientes" && (
               <CustomersView
                 key={pendingPhone ?? "directorio"}

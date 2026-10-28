@@ -99,6 +99,7 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
         <span>TOTAL</span>
         <span>{formatMoney(order.totalCents)}</span>
       </div>
+      {order.wantsInvoice && <p className="mt-1 font-semibold">Facturar</p>}
       <Row label="Forma de pago" value={PAYMENT_LABEL[order.payment]} />
       <Row label={order.payment === "pendiente" ? "Saldo pendiente" : "Pagado"} value={formatMoney(order.totalCents)} />
 

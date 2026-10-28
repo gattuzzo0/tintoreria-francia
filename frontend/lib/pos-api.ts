@@ -2,7 +2,7 @@ import { ApiHttpError, apiFetch, apiUrl } from "./api-client";
 import type { Branch } from "./branches";
 import { prepareOrderPhoto } from "./prepare-order-photo";
 import type { RushRates } from "./delivery";
-import type { Category, Customer, DeliveredOrder, Order, OrderStatus, PaymentMethod, Service, Unit } from "./pos-data";
+import type { Category, Customer, DeliveredOrder, Order, OrderStatus, PaidMethod, PaymentMethod, Service, Unit } from "./pos-data";
 
 export type Me = {
   userId: string;
@@ -21,6 +21,7 @@ export type CreateOrderBody = {
   branch: Branch;
   notes: string;
   photoId?: string;
+  wantsInvoice?: boolean;
   lines: { serviceId: string; qty: number; color: string }[];
 };
 
@@ -49,6 +50,18 @@ export const fetchCustomers = (token: string) => apiFetch<Customer[]>("/api/cust
 
 export const createCustomer = (token: string, body: { name: string; phone: string }) =>
   apiFetch<Customer>("/api/customers", token, { method: "POST", body });
+
+export const updateCustomerFiscal = (
+  token: string,
+  customerId: string,
+  body: {
+    rfc?: string | null;
+    legalName?: string | null;
+    fiscalZip?: string | null;
+    taxRegime?: string | null;
+    cfdiUse?: string | null;
+  },
+) => apiFetch<Customer>(`/api/customers/${encodeURIComponent(customerId)}`, token, { method: "PATCH", body });
 
 export type OrderBoard = { orders: Order[]; delivered: DeliveredOrder[]; hasMore: boolean };
 
@@ -79,13 +92,42 @@ export const fetchOrderSummary = (token: string, branch: string) =>
 export const fetchCustomerStats = (token: string, branch: string) =>
   apiFetch<CustomerStat[]>(`/api/orders/stats?${new URLSearchParams({ branch })}`, token);
 
+export type InvoiceOrder = {
+  folio: number;
+  customerName: string;
+  phone: string;
+  rfc: string | null;
+  legalName: string | null;
+  fiscalZip: string | null;
+  taxRegime: string | null;
+  cfdiUse: string | null;
+  status: OrderStatus;
+  payment: PaymentMethod;
+  subtotalCents: number;
+  taxCents: number;
+  surchargeCents: number;
+  totalCents: number;
+  branch: string | null;
+  createdAt: string;
+};
+
+export const fetchInvoiceOrders = (token: string) => apiFetch<InvoiceOrder[]>("/api/orders/invoices", token);
+
 export const fetchOrder = (token: string, folio: number) => apiFetch<Order>(`/api/orders/${folio}`, token);
 
 export const createOrder = (token: string, body: CreateOrderBody, idempotencyKey: string) =>
   apiFetch<Order>("/api/orders", token, { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });
 
-export const advanceOrderStatus = (token: string, folio: number, status: OrderStatus) =>
-  apiFetch<Order>(`/api/orders/${folio}/status`, token, { method: "PATCH", body: { status } });
+export const advanceOrderStatus = (
+  token: string,
+  folio: number,
+  status: OrderStatus,
+  settle?: { payment: PaidMethod; wantsInvoice: boolean },
+) =>
+  apiFetch<Order>(`/api/orders/${folio}/status`, token, {
+    method: "PATCH",
+    body: settle ? { status, payment: settle.payment, wantsInvoice: settle.wantsInvoice } : { status },
+  });
 
 export const addOrderNote = (token: string, folio: number, body: string) =>
   apiFetch<Order>(`/api/orders/${folio}/notes`, token, { method: "POST", body: { body } });

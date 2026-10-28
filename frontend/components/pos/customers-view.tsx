@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mail, Phone, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiHttpError } from "@/lib/api-client";
 import { fetchCustomerStats, type CustomerStat } from "@/lib/pos-api";
-import { formatMoney } from "@/lib/pos-data";
+import { formatMoney, type Customer } from "@/lib/pos-data";
 import { readBranch } from "@/lib/branches";
 import { cn } from "@/lib/utils";
 import {
@@ -16,6 +16,8 @@ import {
   sanitizeText,
   validateCustomer,
 } from "@/lib/validation";
+import { cfdiUseLabel, taxRegimeLabel } from "@/lib/fiscal";
+import { customerFiscal, FiscalForm, fiscalDraft } from "./fiscal-form";
 import { usePos } from "./pos-provider";
 
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
@@ -23,6 +25,31 @@ const INPUT =
   "h-10 w-full rounded-xl border border-input bg-background px-3 text-base sm:text-sm placeholder:text-muted-foreground aria-invalid:border-destructive " +
   FOCUS;
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
+
+function FiscalSummary({ customer, onEdit }: { customer: Customer; onEdit: () => void }) {
+  const fiscal = customerFiscal(customer);
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 text-xs">
+        <p className={cn("font-mono", fiscal.rfc ? "text-foreground" : "text-muted-foreground")}>{fiscal.rfc || "Sin RFC"}</p>
+        <p className={cn("truncate", fiscal.legalName ? "text-foreground" : "text-muted-foreground")}>
+          {fiscal.legalName || "Sin razón social"}
+        </p>
+        <p className="text-muted-foreground">CP {fiscal.fiscalZip || "—"}</p>
+        <p className="truncate text-muted-foreground">{taxRegimeLabel(fiscal.taxRegime)}</p>
+        <p className="truncate text-muted-foreground">{cfdiUseLabel(fiscal.cfdiUse)}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`Editar datos fiscales de ${customer.name}`}
+        className={cn("shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-primary hover:bg-accent", FOCUS)}
+      >
+        Editar
+      </button>
+    </div>
+  );
+}
 
 const initials = (name: string) =>
   name
@@ -39,7 +66,7 @@ export function CustomersView({
   prefillPhone: string | null;
   onReturnToSale: () => void;
 }) {
-  const { customers, addCustomer, updateDraft, withAuth } = usePos();
+  const { customers, addCustomer, saveCustomerFiscal, updateDraft, withAuth } = usePos();
   const fromSale = Boolean(prefillPhone);
   const [stats, setStats] = useState<Map<string, CustomerStat>>(() => new Map());
 
@@ -49,6 +76,9 @@ export function CustomersView({
   const [phone, setPhone] = useState(() => sanitizePhoneInput(prefillPhone ?? ""));
   const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
   const [newId, setNewId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [savingFiscal, setSavingFiscal] = useState(false);
+  const fiscalDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     const branch = readBranch();
@@ -65,6 +95,14 @@ export function CustomersView({
       cancelled = true;
     };
   }, [withAuth]);
+
+  useEffect(() => {
+    const dialog = fiscalDialog.current;
+    if (!dialog) return;
+    if (editing && !dialog.open) dialog.showModal();
+    if (!editing && dialog.open) dialog.close();
+  }, [editing]);
+
   const [busy, setBusy] = useState(false);
 
   const q = query.trim().toLowerCase();
@@ -221,6 +259,9 @@ export function CustomersView({
               <th scope="col" className="hidden px-4 py-3 text-left font-normal md:table-cell">
                 Contacto
               </th>
+              <th scope="col" className="px-4 py-3 text-left font-normal">
+                Datos fiscales
+              </th>
               <th scope="col" className="px-4 py-3 text-right font-normal">
                 Órdenes
               </th>
@@ -232,7 +273,7 @@ export function CustomersView({
           <tbody className="divide-y">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
                   Sin clientes que coincidan con la búsqueda.
                 </td>
               </tr>
@@ -269,6 +310,9 @@ export function CustomersView({
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3">
+                      <FiscalSummary customer={c} onEdit={() => setEditing(c)} />
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <span className="font-mono">{orderCount}</span>
                       <span className="block text-xs text-muted-foreground">{activeCount} activas</span>
@@ -281,6 +325,40 @@ export function CustomersView({
           </tbody>
         </table>
       </div>
+      <dialog
+        ref={fiscalDialog}
+        onClose={() => setEditing(null)}
+        onCancel={(e) => {
+          if (savingFiscal) e.preventDefault();
+        }}
+        className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto bg-transparent p-0 backdrop:bg-foreground/50"
+      >
+        {editing && (
+          <div className="rounded-2xl bg-background p-5 shadow-2xl">
+            <h2 className="font-semibold tracking-tight">Datos fiscales</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{editing.name}</p>
+            <FiscalForm
+              key={editing.id}
+              idPrefix={`cust-${editing.id}`}
+              initial={fiscalDraft(customerFiscal(editing))}
+              required={false}
+              busy={savingFiscal}
+              submitLabel="Guardar"
+              cancelLabel="Cancelar"
+              onCancel={() => setEditing(null)}
+              onSubmit={async (value) => {
+                setSavingFiscal(true);
+                try {
+                  await saveCustomerFiscal(editing.id, value);
+                  setEditing(null);
+                } finally {
+                  setSavingFiscal(false);
+                }
+              }}
+            />
+          </div>
+        )}
+      </dialog>
     </section>
   );
 }
