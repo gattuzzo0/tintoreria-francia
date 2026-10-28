@@ -5,6 +5,7 @@ import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyN
 import { Button } from "@/components/ui/button";
 import { getBranchInfo, readBranch } from "@/lib/branches";
 import { formatDeliveryShort } from "@/lib/delivery";
+import { ordersCacheKey, readOrdersCache, writeOrdersCache } from "@/lib/orders-board-cache";
 import { fetchOrder, fetchOrderPage } from "@/lib/pos-api";
 import { formatDate, formatDateTime, formatMoney, formatShortDate, PAYMENT_LABEL, STATUS_META, type Customer, type DeliveredOrder, type Order, type OrderStatus } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,12 @@ import { OrderPhoto } from "./order-photo";
 import { usePos } from "./pos-provider";
 
 const COLUMNS: OrderStatus[] = ["recibido", "proceso", "listo", "entregado"];
+
+function cachedPage(status: OrderStatus, q: string) {
+  const branch = readBranch();
+  if (!branch) return null;
+  return readOrdersCache(ordersCacheKey(branch, status, q));
+}
 const FOLIO_MAX_DIGITS = 9;
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 /** Tailwind `md` — autofocus del buscador solo en desktop. */
@@ -42,18 +49,26 @@ export function OrdersBoard() {
   } | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [notesFolio, setNotesFolio] = useState<number | null>(null);
-  const [rows, setRows] = useState<Order[]>([]);
-  const [deliveredRows, setDeliveredRows] = useState<DeliveredOrder[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Order[]>(() => cachedPage("recibido", "")?.orders ?? []);
+  const [deliveredRows, setDeliveredRows] = useState<DeliveredOrder[]>(() => cachedPage("recibido", "")?.delivered ?? []);
+  const [hasMore, setHasMore] = useState(() => cachedPage("recibido", "")?.hasMore ?? false);
+  const [loading, setLoading] = useState(() => cachedPage("recibido", "") == null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const fetchKey = `${page}:${query}`;
   const [fetchedKey, setFetchedKey] = useState(fetchKey);
   if (fetchedKey !== fetchKey) {
     setFetchedKey(fetchKey);
-    setLoading(true);
     setLoadError(null);
+    const hit = cachedPage(page, query);
+    if (hit) {
+      setRows(hit.orders);
+      setDeliveredRows(hit.delivered);
+      setHasMore(hit.hasMore);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
   }
 
   useEffect(() => {
@@ -72,12 +87,20 @@ export function OrdersBoard() {
     const branch = readBranch();
     const id = ++requestId.current;
     if (!branch) return;
+    const key = ordersCacheKey(branch, page, query);
+    if (readOrdersCache(key)) return;
     void withAuth((token) => fetchOrderPage(token, { status: page, branch, q: query || undefined }))
       .then((res) => {
         if (requestId.current !== id) return;
-        setRows(res.orders);
-        setDeliveredRows(res.delivered);
-        setHasMore(res.hasMore && res.orders.length + res.delivered.length > 0);
+        const next = {
+          orders: res.orders,
+          delivered: res.delivered,
+          hasMore: res.hasMore && res.orders.length + res.delivered.length > 0,
+        };
+        writeOrdersCache(key, next);
+        setRows(next.orders);
+        setDeliveredRows(next.delivered);
+        setHasMore(next.hasMore);
       })
       .catch((err: unknown) => {
         if (requestId.current !== id) return;
@@ -103,9 +126,13 @@ export function OrdersBoard() {
       .then((res) => {
         if (requestId.current !== id) return;
         const added = res.orders.length + res.delivered.length;
-        setRows((prev) => mergeByFolio(prev, res.orders));
-        setDeliveredRows((prev) => mergeByFolio(prev, res.delivered));
-        setHasMore(res.hasMore && added > 0);
+        const orders = mergeByFolio(rows, res.orders);
+        const delivered = mergeByFolio(deliveredRows, res.delivered);
+        const more = res.hasMore && added > 0;
+        setRows(orders);
+        setDeliveredRows(delivered);
+        setHasMore(more);
+        if (branch) writeOrdersCache(ordersCacheKey(branch, page, query), { orders, delivered, hasMore: more });
       })
       .catch((err: unknown) => {
         if (requestId.current !== id) return;

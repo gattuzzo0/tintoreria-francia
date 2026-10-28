@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
 import { DEFAULT_RUSH_RATES, rushPct, type RushRates } from "@/lib/delivery";
 import { lineKey, parseLineKey } from "@/lib/garment-colors";
+import { clearOrdersCache } from "@/lib/orders-board-cache";
+import { clearReportsCache } from "@/lib/reports-cache";
 import {
   addOrderNote,
   attachOrderPhoto,
@@ -249,6 +251,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     };
     const key = idempotencyKey.current;
     const order = await withAuth((t) => createOrder(t, body, key));
+    clearOrdersCache();
+    clearReportsCache();
     setSummary((current) => ({
       ...current,
       nextFolio: Math.max(current.nextFolio, order.folio + 1),
@@ -261,13 +265,20 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
 
   const advanceOrder = useCallback(
     async (folio: number, next: OrderStatus, settle?: { payment: PaidMethod; wantsInvoice: boolean }) => {
-      return withAuth((t) => advanceOrderStatus(t, folio, next, settle));
+      const updated = await withAuth((t) => advanceOrderStatus(t, folio, next, settle));
+      clearOrdersCache();
+      clearReportsCache();
+      return updated;
     },
     [withAuth],
   );
 
   const addNote = useCallback(
-    async (folio: number, body: string) => withAuth((t) => addOrderNote(t, folio, body)),
+    async (folio: number, body: string) => {
+      const updated = await withAuth((t) => addOrderNote(t, folio, body));
+      clearOrdersCache();
+      return updated;
+    },
     [withAuth],
   );
 
@@ -282,13 +293,18 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
           throw err;
         }
       });
+      clearOrdersCache();
       return updated;
     },
     [withAuth],
   );
 
   const clearOrderPhotos = useCallback(
-    async (folio: number) => withAuth((t) => deleteOrderPhotos(t, folio)),
+    async (folio: number) => {
+      const updated = await withAuth((t) => deleteOrderPhotos(t, folio));
+      clearOrdersCache();
+      return updated;
+    },
     [withAuth],
   );
 
