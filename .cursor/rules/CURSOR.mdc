@@ -42,7 +42,7 @@ Migraciones `000012` (rfc, wants_invoice) y `000013` (razón social, CP, régime
 
 ## Contabilidad
 
-`GET /api/orders/invoices`, todas las sucursales, solo `wants_invoice`. Muestra folio, cliente, teléfono, ficha fiscal, estado, pago, sucursal, subtotal, IVA 16% y total. Si hay exprés, bajo el total dice que va incluido.
+`GET /api/orders/invoices?year&month`, todas las sucursales, solo `wants_invoice` de ese mes civil (hora local de la tienda). El panel abre en el mes y año actuales. Muestra folio, cliente, teléfono, ficha fiscal, estado, pago, sucursal, subtotal, IVA 16% y total. Si hay exprés, bajo el total dice que va incluido. Cada orden acepta un PDF y un XML (botón o arrastre); se valida extensión y contenido, y el archivo vive en R2 (`000014`). Reemplazar borra el anterior.
 
 ## Caché de pantalla
 

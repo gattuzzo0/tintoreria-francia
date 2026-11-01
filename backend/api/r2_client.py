@@ -36,6 +36,27 @@ def get_r2():
     )
 
 
+def object_meta(key: str) -> dict | None:
+    """Tamaño y tipo, o None si la llave no existe."""
+    from botocore.exceptions import ClientError
+
+    try:
+        head = get_r2().head_object(Bucket=get_r2_bucket_name(), Key=key)
+    except ClientError as exc:
+        if exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+            return None
+        raise
+    return {"byteSize": int(head.get("ContentLength") or 0), "contentType": head.get("ContentType") or ""}
+
+
+def read_object_prefix(key: str, n: int = 80) -> bytes:
+    body = get_r2().get_object(Bucket=get_r2_bucket_name(), Key=key, Range=f"bytes=0-{n - 1}")["Body"]
+    try:
+        return body.read()
+    finally:
+        body.close()
+
+
 def object_exists(key: str) -> bool:
     from botocore.exceptions import ClientError
 

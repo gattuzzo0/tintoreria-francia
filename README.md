@@ -70,7 +70,7 @@ Plantillas: `frontend/.env.example` y `backend/.env.example`. Los valores reales
 
 Las tablas no se crean al arrancar la API. En el SQL Editor de Supabase aplica, en orden, los archivos de `backend/migrations/`. `backend/supabase_schema.sql` es el esquema completo de referencia.
 
-`000012` agrega RFC y la marca de factura en la orden. `000013` agrega razón social, código postal, régimen fiscal y uso del CFDI. Sin `000013`, guardar esos campos responde 503.
+`000012` agrega RFC y la marca de factura en la orden. `000013` agrega razón social, código postal, régimen fiscal y uso del CFDI. Sin `000013`, guardar esos campos responde 503. `000014` guarda la llave del PDF y del XML de la factura ya hecha. Sin ella, subir esos archivos responde 503.
 
 ## Caché en el navegador
 
