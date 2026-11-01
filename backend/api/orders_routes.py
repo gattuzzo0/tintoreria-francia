@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -11,6 +11,7 @@ from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.deps import require_pos_staff, require_staff_writer
+from api.invoice_file_routes import invoice_file_router
 from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo, purge_order_photos
 from api.supabase_client import RpcError, call_rpc, get_supabase
 from api.validation import NOTES_MAX, delivery_patch, invoice_on_create, sanitize_text
@@ -18,6 +19,7 @@ from api.validation import NOTES_MAX, delivery_patch, invoice_on_create, sanitiz
 logger = logging.getLogger(__name__)
 orders_router = APIRouter()
 orders_router.include_router(order_photo_router)
+orders_router.include_router(invoice_file_router)
 
 PaymentMethod = Literal["efectivo", "tarjeta", "transferencia", "pendiente"]
 OrderStatus = Literal["recibido", "proceso", "listo", "entregado"]
@@ -219,6 +221,8 @@ class InvoiceOrderOut(BaseModel):
     taxCents: int
     surchargeCents: int
     totalCents: int
+    hasInvoicePdf: bool = False
+    hasInvoiceXml: bool = False
     branch: str | None = None
     createdAt: str
 
@@ -338,11 +342,63 @@ def _branch_or_422(branch: str) -> str:
     return branch
 
 
-def _page_rows(columns: str, order_status: str, branch: str, before: int | None):
-    query = get_supabase().table("orders").select(columns).eq("status", order_status).eq("branch", branch)
+def order_page_folios(noted: list[int], plain: list[int], *, first: bool, page_size: int) -> tuple[list[int], bool]:
+    """Notas primero, folio desc dentro de cada grupo. La primera página lleva todas las notas y un tramo sin nota."""
+    chunk = plain[:page_size]
+    more = len(plain) > page_size
+    if not first:
+        return chunk, more
+    return noted + chunk, more
+
+
+def _noted_folios(order_status: str, branch: str) -> set[int]:
+    """Texto, foto o nota de staff. Tres lecturas chicas: un OR de embeds no entra en PostgREST."""
+    found: set[int] = set()
+
+    def collect(select: str, *, text: bool = False) -> None:
+        query = (
+            get_supabase()
+            .table("orders")
+            .select(select)
+            .eq("status", order_status)
+            .eq("branch", branch)
+            .limit(ORDERS_LIMIT)
+        )
+        if text:
+            query = query.neq("notes", "")
+        found.update(int(row["folio"]) for row in (query.execute().data or []))
+
+    try:
+        collect("folio", text=True)
+    except Exception:
+        logger.warning("Listado sin columna notes")
+        return found
+    for embed in ("order_photos!inner(id)", "order_notes!inner(id)"):
+        try:
+            collect(f"folio, {embed}")
+        except Exception:
+            logger.warning("Listado sin %s", embed.split("!")[0])
+    return found
+
+
+def _plain_folios(order_status: str, branch: str, before: int | None, q: str, noted: set[int]) -> list[int]:
+    """Folios sin nota, desc. Trae uno de más para saber si hay otra página."""
+    if q:
+        return [folio for folio in _folios_matching(order_status, branch, q, before) if folio not in noted]
+    query = (
+        get_supabase()
+        .table("orders")
+        .select("folio")
+        .eq("status", order_status)
+        .eq("branch", branch)
+        .order("folio", desc=True)
+        .limit(PAGE_SIZE + 1)
+    )
     if before is not None:
         query = query.lt("folio", before)
-    return query.order("folio", desc=True).limit(PAGE_SIZE + 1).execute()
+    if noted:
+        query = query.not_.in_("folio", sorted(noted))
+    return [int(row["folio"]) for row in (query.execute().data or [])]
 
 
 def _folios_matching(order_status: str, branch: str, q: str, before: int | None) -> list[int]:
@@ -374,29 +430,23 @@ def _rows_for_folios(columns: str, folios: list[int]) -> list[dict]:
 
 
 def _fetch_page(order_status: str, branch: str, before: int | None, q: str) -> tuple[list[dict], bool]:
-    columns = (
-        _DELIVERED
-        if order_status == "entregado"
-        else _SELECT
-    )
+    columns = _DELIVERED if order_status == "entregado" else _SELECT
+    noted = _noted_folios(order_status, branch)
     if q:
-        matched = _folios_matching(order_status, branch, q, before)
-        has_more = len(matched) > PAGE_SIZE
-        chosen = matched[:PAGE_SIZE]
-        try:
-            return _rows_for_folios(columns, chosen), has_more
-        except Exception:
-            logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
-            fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
-            return _rows_for_folios(fallback, chosen), has_more
+        noted = {folio for folio in noted if q in str(folio)}
+    plain = _plain_folios(order_status, branch, before, q, noted)
+    chosen, has_more = order_page_folios(
+        sorted(noted, reverse=True),
+        plain,
+        first=before is None,
+        page_size=PAGE_SIZE,
+    )
     try:
-        res = _page_rows(columns, order_status, branch, before)
+        return _rows_for_folios(columns, chosen), has_more
     except Exception:
         logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
         fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
-        res = _page_rows(fallback, order_status, branch, before)
-    rows = res.data or []
-    return rows[:PAGE_SIZE], len(rows) > PAGE_SIZE
+        return _rows_for_folios(fallback, chosen), has_more
 
 
 def _count_status(order_status: str, branch: str) -> int:
@@ -460,24 +510,43 @@ class _MissingInvoiceColumn(Exception):
     pass
 
 
-def _fetch_invoice_orders():
-    try:
-        return (
-            get_supabase()
-            .table("orders")
-            .select(
-                "folio, customer_id, payment_method, status, subtotal_cents, tax_cents, "
-                "surcharge_cents, total_cents, branch, created_at"
+_INVOICE_SELECTS = (
+    "folio, customer_id, payment_method, status, subtotal_cents, tax_cents, "
+    "surcharge_cents, total_cents, branch, created_at, invoice_pdf_key, invoice_xml_key",
+    "folio, customer_id, payment_method, status, subtotal_cents, tax_cents, "
+    "surcharge_cents, total_cents, branch, created_at",
+)
+
+
+def _invoice_month_bounds(year: int, month: int) -> tuple[str, str]:
+    """Mes civil en hora de la tintorería (UTC−6), no UTC."""
+    start = datetime(year, month, 1, tzinfo=timezone(timedelta(hours=-6)))
+    end = datetime(year + 1, 1, 1, tzinfo=start.tzinfo) if month == 12 else datetime(year, month + 1, 1, tzinfo=start.tzinfo)
+    return start.isoformat(), end.isoformat()
+
+
+def _fetch_invoice_orders(year: int, month: int):
+    start, end = _invoice_month_bounds(year, month)
+    last: APIError | None = None
+    for columns in _INVOICE_SELECTS:
+        try:
+            return (
+                get_supabase()
+                .table("orders")
+                .select(columns)
+                .eq("wants_invoice", True)
+                .gte("created_at", start)
+                .lt("created_at", end)
+                .order("folio", desc=True)
+                .limit(ORDERS_LIMIT)
+                .execute()
             )
-            .eq("wants_invoice", True)
-            .order("folio", desc=True)
-            .limit(ORDERS_LIMIT)
-            .execute()
-        )
-    except APIError as exc:
-        if exc.code == "42703":
-            raise _MissingInvoiceColumn from None
-        raise
+        except APIError as exc:
+            if exc.code != "42703":
+                raise
+            last = exc
+            logger.warning("Listado de facturas sin columnas nuevas; aplica migraciones 000012 y 000014")
+    raise _MissingInvoiceColumn from last
 
 
 _CUSTOMER_LOOKUPS = (
@@ -506,8 +575,8 @@ def _customers_by_id(ids: list[str]) -> dict[str, dict]:
     return found
 
 
-def _invoice_rows() -> list[InvoiceOrderOut]:
-    res = _fetch_invoice_orders()
+def _invoice_rows(year: int, month: int) -> list[InvoiceOrderOut]:
+    res = _fetch_invoice_orders(year, month)
     rows = res.data or []
     customers = _customers_by_id(sorted({str(row["customer_id"]) for row in rows}))
     out: list[InvoiceOrderOut] = []
@@ -529,6 +598,8 @@ def _invoice_rows() -> list[InvoiceOrderOut]:
                 taxCents=int(row["tax_cents"]),
                 surchargeCents=int(row["surcharge_cents"]),
                 totalCents=int(row["total_cents"]),
+                hasInvoicePdf=bool(row.get("invoice_pdf_key")),
+                hasInvoiceXml=bool(row.get("invoice_xml_key")),
                 branch=row.get("branch"),
                 createdAt=_iso(row["created_at"]),
             )
@@ -584,9 +655,13 @@ async def customer_order_stats(
 
 
 @orders_router.get("/invoices", response_model=list[InvoiceOrderOut])
-async def list_invoice_orders(_staff: dict = Depends(require_pos_staff)):
+async def list_invoice_orders(
+    year: int = Query(ge=2020, le=2100),
+    month: int = Query(ge=1, le=12),
+    _staff: dict = Depends(require_pos_staff),
+):
     try:
-        return await asyncio.to_thread(_invoice_rows)
+        return await asyncio.to_thread(_invoice_rows, year, month)
     except _MissingInvoiceColumn:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -375,9 +375,19 @@
   animation: orders-sweep-out 380ms ease-out both;
 }
 
+@keyframes invoice-drop-in {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent); }
+  100% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 0%, transparent); }
+}
+
+.invoice-drop-target {
+  animation: invoice-drop-in 0.8s ease-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .orders-sweep-in,
-  .orders-sweep-out {
+  .orders-sweep-out,
+  .invoice-drop-target {
     animation: none !important;
   }
 }

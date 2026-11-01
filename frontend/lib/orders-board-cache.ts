@@ -13,7 +13,8 @@ type Entry = {
 const pages = new Map<string, Entry>();
 
 export function ordersCacheKey(branch: string, status: string, query: string): string {
-  return `${branch}\0${status}\0${query}`;
+  // ponytail: "n" tira la lista cacheada antes de ordenar las notas arriba.
+  return `${branch}\0${status}\0${query}\0n`;
 }
 
 export function readOrdersCache(key: string): Entry | null {

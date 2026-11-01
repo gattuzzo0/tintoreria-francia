@@ -107,11 +107,51 @@ export type InvoiceOrder = {
   taxCents: number;
   surchargeCents: number;
   totalCents: number;
+  hasInvoicePdf: boolean;
+  hasInvoiceXml: boolean;
   branch: string | null;
   createdAt: string;
 };
 
-export const fetchInvoiceOrders = (token: string) => apiFetch<InvoiceOrder[]>("/api/orders/invoices", token);
+export const fetchInvoiceOrders = (token: string, year: number, month: number) =>
+  apiFetch<InvoiceOrder[]>(
+    `/api/orders/invoices?${new URLSearchParams({ year: String(year), month: String(month) })}`,
+    token,
+  );
+
+async function putSignedFile(url: string, body: Blob, contentType: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "PUT", headers: { "Content-Type": contentType }, body });
+  } catch {
+    throw new ApiHttpError("No se pudo subir el archivo.", 0);
+  }
+  if (!res.ok) throw new ApiHttpError("No se pudo subir el archivo.", res.status);
+}
+
+export async function uploadInvoiceFile(
+  token: string,
+  folio: number,
+  kind: "pdf" | "xml",
+  file: File,
+): Promise<void> {
+  const contentType = kind === "pdf" ? "application/pdf" : "application/xml";
+  const presign = await apiFetch<{ fileId: string; key: string; putUrl: string }>(
+    `/api/orders/${folio}/invoice-files/presign`,
+    token,
+    { method: "POST", body: { kind, byteSize: file.size } },
+  );
+  await putSignedFile(presign.putUrl, file, contentType);
+  await apiFetch<void>(`/api/orders/${folio}/invoice-files`, token, {
+    method: "POST",
+    body: { kind, fileId: presign.fileId, key: presign.key },
+  });
+}
+
+export async function openInvoiceFile(token: string, folio: number, kind: "pdf" | "xml"): Promise<void> {
+  const { url } = await apiFetch<{ url: string }>(`/api/orders/${folio}/invoice-files/${kind}`, token);
+  window.open(url, "_blank", "noopener");
+}
 
 export const fetchOrder = (token: string, folio: number) => apiFetch<Order>(`/api/orders/${folio}`, token);
 

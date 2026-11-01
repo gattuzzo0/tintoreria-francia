@@ -9,7 +9,8 @@ import { ordersCacheKey, readOrdersCache, writeOrdersCache } from "@/lib/orders-
 import { fetchOrder, fetchOrderPage } from "@/lib/pos-api";
 import { formatDate, formatDateTime, formatMoney, formatShortDate, PAYMENT_LABEL, STATUS_META, type Customer, type DeliveredOrder, type Order, type OrderStatus } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
-import { readyMessage, whatsappSendUrl } from "@/lib/whatsapp";
+import { orderPhotoPng } from "@/lib/copy-order-photo";
+import { noteMessage, readyMessage, whatsappSendUrl } from "@/lib/whatsapp";
 import { GarmentColorMark } from "./color-revolver";
 import { customerFiscal } from "./fiscal-form";
 import { InvoiceDialog, type InvoiceResult } from "./invoice-dialog";
@@ -198,13 +199,13 @@ export function OrdersBoard() {
   const showPage = (next: OrderStatus) => {
     if (next === page) return;
     const dir = COLUMNS.indexOf(next) > COLUMNS.indexOf(page) ? 1 : -1;
-    setSweep((prev) => ({ from: page, dir, key: (prev?.key ?? 0) + 1, orders: rows, delivered: deliveredRows }));
+    setSweep((prev) => ({ from: page, dir, key: (prev?.key ?? 0) + 1, orders: noteFirst(rows), delivered: deliveredRows }));
     setPage(next);
     setExpanded(null);
   };
 
   const pageProps = {
-    orders: rows,
+    orders: noteFirst(rows),
     query,
     expanded,
     pending,
@@ -360,6 +361,18 @@ function InvoiceMark() {
   );
 }
 
+function hasOrderNote(order: Order): boolean {
+  return Boolean(order.notes.trim() || order.photoId || (order.photoIds?.length ?? 0) > 0 || order.staffNotes.length > 0);
+}
+
+function noteFirst(orders: Order[]): Order[] {
+  const top = orders.filter(hasOrderNote);
+  if (top.length === 0) return orders;
+  const rest = orders.filter((order) => !hasOrderNote(order));
+  const byFolio = (a: Order, b: Order) => b.folio - a.folio;
+  return [...top.sort(byFolio), ...rest.sort(byFolio)];
+}
+
 function mergeByFolio<T extends { folio: number }>(prev: T[], next: T[]) {
   const seen = new Set(prev.map((row) => row.folio));
   return [...prev, ...next.filter((row) => !seen.has(row.folio))];
@@ -411,6 +424,7 @@ function OrderPage({
   live: boolean;
   detailsOnly?: boolean;
 }) {
+  const [shareError, setShareError] = useState<{ folio: number; message: string } | null>(null);
   const list = orders.filter((o) => o.status === status);
   if (list.length === 0) return <EmptyOrders query={query} />;
   return (
@@ -496,6 +510,13 @@ function OrderPage({
                             </span>
                           </button>
                           {o.status === "listo" && (
+                            <NoteWhatsApp
+                              order={o}
+                              customer={customer}
+                              onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
+                            />
+                          )}
+                          {o.status === "listo" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -579,17 +600,23 @@ function OrderPage({
                             </label>
                           )}
                           {o.status !== "listo" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className={cn(o.status !== "proceso" && "ml-auto")}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNotes(o.folio);
-                              }}
-                            >
-                              <StickyNote aria-hidden /> Notas
-                            </Button>
+                            <span className={cn("inline-flex items-center gap-2", o.status !== "proceso" && "ml-auto")}>
+                              <NoteWhatsApp
+                                order={o}
+                                customer={customer}
+                                onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNotes(o.folio);
+                                }}
+                              >
+                                <StickyNote aria-hidden /> Notas
+                              </Button>
+                            </span>
                           )}
                           {o.status === "listo" && meta.next && (
                             <Button
@@ -643,9 +670,9 @@ function OrderPage({
                             </Button>
                           )}
                         </div>
-                        {error?.folio === o.folio && (
+                        {(shareError?.folio === o.folio || error?.folio === o.folio) && (
                           <p role="alert" className="mt-2 text-xs text-destructive">
-                            {error.message}
+                            {shareError?.folio === o.folio ? shareError.message : error?.message}
                           </p>
                         )}
           </li>
@@ -768,6 +795,68 @@ function DeliveredList({
       </div>
       {live && <OrderNotesDialog order={notesOrder} onClose={() => setNotesOrder(null)} onUpdated={remember} />}
     </>
+  );
+}
+
+function NoteWhatsApp({
+  order,
+  customer,
+  onError,
+}: {
+  order: Order;
+  customer: Customer | undefined;
+  onError: (message: string | null) => void;
+}) {
+  const { withAuth } = usePos();
+  const [busy, setBusy] = useState(false);
+  // ponytail: clipboard holds one image. First photo is recepción. Add a picker if several must go.
+  const photoId = order.photoIds?.[0] ?? order.photoId ?? null;
+  const comments = [order.notes, ...order.staffNotes.map((n) => n.body)];
+  if (!photoId && !comments.some((c) => c.trim())) return null;
+  const phone = customer?.phone ?? "";
+
+  return (
+    <button
+      type="button"
+      disabled={!phone || busy}
+      title={phone ? "Enviar nota por WhatsApp" : "Sin teléfono"}
+      aria-label={`Enviar la nota de la orden ${order.folio} por WhatsApp`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!phone || !customer) return;
+        onError(null);
+        const href = whatsappSendUrl(phone, noteMessage(customer.name, order.folio, order.notes));
+        const open = () => {
+          window.location.href = href;
+        };
+        if (!photoId) {
+          open();
+          return;
+        }
+        const fail = () => {
+          setBusy(false);
+          onError("No se pudo copiar la foto.");
+        };
+        if (!navigator.clipboard?.write) {
+          fail();
+          return;
+        }
+        setBusy(true);
+        let write: Promise<void>;
+        try {
+          write = navigator.clipboard.write([
+            new ClipboardItem({ "image/png": withAuth((token) => orderPhotoPng(token, photoId)) }),
+          ]);
+        } catch {
+          fail();
+          return;
+        }
+        void write.then(open, fail).finally(() => setBusy(false));
+      }}
+      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-[#25D366] text-white outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
+    >
+      <WhatsAppMark />
+    </button>
   );
 }
 
