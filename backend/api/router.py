@@ -11,6 +11,7 @@ from api.auth_jwt import require_access_token
 from api.catalog_routes import catalog_router
 from api.config import is_database_configured
 from api.customers_routes import customers_router
+from api.expenses_routes import expenses_router
 from api.deps import STAFF_ROLES, fetch_profile
 from api.orders_routes import orders_router
 from api.reports_routes import reports_router
@@ -22,6 +23,7 @@ api_router = APIRouter()
 api_router.include_router(admins_router, prefix="/admins")
 api_router.include_router(catalog_router, prefix="/catalog")
 api_router.include_router(customers_router, prefix="/customers")
+api_router.include_router(expenses_router, prefix="/expenses")
 api_router.include_router(orders_router, prefix="/orders")
 api_router.include_router(reports_router, prefix="/reports")
 

@@ -184,6 +184,23 @@ create table if not exists tintoreria_francia.delivery_rates (
 
 insert into tintoreria_francia.delivery_rates (id) values (true) on conflict do nothing;
 
+-- Gastos de sucursal. Ver migrations/000015_expenses.sql.
+create table if not exists tintoreria_francia.expenses (
+  id uuid primary key default gen_random_uuid(),
+  branch text not null check (branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro')),
+  spent_on date not null check (spent_on between date '2020-01-01' and date '2100-12-31'),
+  amount_cents integer not null check (
+    amount_cents between 100 and 999999900 and amount_cents % 100 = 0
+  ),
+  concept text not null check (char_length(concept) between 1 and 200),
+  payment_method text not null check (payment_method in ('efectivo', 'tarjeta', 'transferencia')),
+  staff_user_id uuid not null references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_tintoreria_francia_expenses_branch_spent_on
+  on tintoreria_francia.expenses (branch, spent_on desc);
+
 create index if not exists idx_tintoreria_francia_orders_created_at on tintoreria_francia.orders (created_at desc);
 create index if not exists idx_tintoreria_francia_orders_customer_id on tintoreria_francia.orders (customer_id);
 create index if not exists idx_tintoreria_francia_order_lines_order_folio on tintoreria_francia.order_lines (order_folio);
@@ -209,6 +226,8 @@ alter table tintoreria_francia.order_photos enable row level security;
 alter table tintoreria_francia.order_photos force row level security;
 alter table tintoreria_francia.delivery_rates enable row level security;
 alter table tintoreria_francia.delivery_rates force row level security;
+alter table tintoreria_francia.expenses enable row level security;
+alter table tintoreria_francia.expenses force row level security;
 
 revoke all on schema tintoreria_francia from anon, authenticated;
 revoke all on all tables in schema tintoreria_francia from anon, authenticated;

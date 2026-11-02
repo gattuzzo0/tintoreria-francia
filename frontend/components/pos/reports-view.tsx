@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Wallet } from "lucide-react";
 import { formatMoney, PAYMENT_LABEL } from "@/lib/pos-data";
 import { readReportCache, writeReportCache } from "@/lib/reports-cache";
 import { fetchReport, type Report } from "@/lib/reports-api";
 import { cn } from "@/lib/utils";
+import { ExpensesView } from "./expenses-view";
 import { BarList, CARD, DailyChart, Heatmap, Kpi, LABEL, SectionTitle, Stat } from "./report-charts";
 import { usePos } from "./pos-provider";
 
@@ -65,6 +66,7 @@ export function ReportsView() {
     return readReportCache(initial.start, initial.end);
   });
   const [error, setError] = useState<string | null>(null);
+  const [showExpenses, setShowExpenses] = useState(false);
   const invalid = rangeError(range.start, range.end);
   const fetchKey = invalid ? "" : `${range.start}:${range.end}`;
   const [fetchedKey, setFetchedKey] = useState(fetchKey);
@@ -109,6 +111,34 @@ export function ReportsView() {
             Reportes
           </h1>
         </div>
+        <div className="flex flex-1 justify-center self-center">
+          <div className="flex gap-1 rounded-xl border bg-card p-1" role="group" aria-label="Sección">
+            <button
+              type="button"
+              onClick={() => setShowExpenses(false)}
+              aria-pressed={!showExpenses}
+              className={cn(
+                "inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30",
+                showExpenses ? "text-muted-foreground hover:text-foreground" : "bg-primary text-primary-foreground",
+              )}
+            >
+              Reportes
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowExpenses(true)}
+              aria-pressed={showExpenses}
+              className={cn(
+                "inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30",
+                showExpenses ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Wallet className="size-4" aria-hidden />
+              Gastos
+            </button>
+          </div>
+        </div>
+        {!showExpenses && (
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1" role="group" aria-label="Periodo">
             {PRESETS.map((p) => (
@@ -157,9 +187,12 @@ export function ReportsView() {
             </label>
           </div>
         </div>
+        )}
       </div>
 
-      {invalid || error ? (
+      {showExpenses ? (
+        <ExpensesView />
+      ) : invalid || error ? (
         <p role="alert" className="text-sm text-destructive">
           {invalid ?? error}
         </p>
