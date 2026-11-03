@@ -42,19 +42,25 @@ Migraciones `000012` (rfc, wants_invoice) y `000013` (razón social, CP, régime
 
 ## Contabilidad
 
-`GET /api/orders/invoices?year&month`, todas las sucursales, solo `wants_invoice` de ese mes civil (hora local de la tienda). El panel abre en el mes y año actuales. Muestra folio, cliente, teléfono, ficha fiscal, estado, pago, sucursal, subtotal, IVA 16% y total. Si hay exprés, bajo el total dice que va incluido. Cada orden acepta un PDF y un XML (botón o arrastre); se valida extensión y contenido, y el archivo vive en R2 (`000014`). Reemplazar borra el anterior.
+`GET /api/orders/invoices?year&month`, todas las sucursales, solo `wants_invoice` de ese mes civil (hora local de la tienda). El panel abre en el mes y año actuales. Muestra folio, cliente, teléfono, ficha fiscal, estado, pago, sucursal, subtotal, IVA 16% y total. Si hay exprés, bajo el total dice que va incluido. Cada orden acepta un PDF y un XML (botón o arrastre); se valida extensión y contenido, y el archivo vive en R2 (`000014`). Reemplazar borra el anterior. El globo de Contabilidad cuenta, en todas las sucursales y meses, las órdenes marcadas a las que les falta el PDF o el XML.
 
 ## Gastos
 
 `GET/POST /api/expenses`, `PATCH/DELETE /api/expenses/{id}`. El botón está dentro de Reportes, así que solo lo abre un admin. Cada fila: fecha, monto en centavos (el formulario pide pesos enteros), concepto y pago `efectivo` | `tarjeta` | `transferencia`. La sucursal es la de la caja y no se edita. Lista del mes de esa sucursal, total del mes. Sin categoría, archivo, IVA ni recurrente. Reportes no lo resta. Tabla `000015`; sin ella la API responde 503.
+
+## Reembolsos
+
+`POST /api/refunds`. Lo abre admin y empleado. Siempre devuelve el total en efectivo, una vez por orden, y solo si la orden es de la caja abierta, ya está cobrada en efectivo o tarjeta, y tiene nota (texto, foto o nota de staff). El botón está en el modal de notas. No hay panel aparte: se ven en Entregado con la marca Reembolso.
+
+Al reembolsar, la orden pasa a entregado y en esa lista lleva la marca Reembolso. Si ya estaba entregada, se queda ahí con la marca. Si el cobro era efectivo, la venta deja de contar en Reportes. Para vender de nuevo se abre una orden nueva. Si ya tiene PDF o XML, no se reembolsa. Si el cobro era tarjeta, la venta sigue en tarjeta y el efectivo sale del cajón; la terminal no se anula. Tabla `000016`; sin ella la API responde 503.
 
 ## Caché de pantalla
 
 `Map` en memoria de la pestaña, 30 minutos. No está en `localStorage` ni en el servidor. Recargar la página lo borra.
 
 - Órdenes (`frontend/lib/orders-board-cache.ts`): clave sucursal + estado + búsqueda. El scroll se guarda en la misma entrada.
-- Reportes (`frontend/lib/reports-cache.ts`): clave desde + hasta.
+- Reportes (`frontend/lib/reports-cache.ts`): clave sucursal de la caja + desde + hasta. El reporte solo incluye órdenes de esa sucursal.
 
-Cobrar o cambiar estado borra las dos. Notas y fotos solo borran Órdenes. Clientes, Contabilidad, Gastos, Catálogo y Administradores se leen al abrirlos. Clientes, catálogo y tarifas de entrega quedan en memoria desde el arranque de la sesión.
+Cobrar, reembolsar o cambiar estado borra las dos. Notas y fotos solo borran Órdenes. Clientes, Contabilidad, Gastos, Catálogo y Administradores se leen al abrirlos. Clientes, catálogo y tarifas de entrega quedan en memoria desde el arranque de la sesión.
 
 No bajar el plazo ni pasar la lista a la base para «refrescar siempre»: con una caja por sucursal el costo es una lectura de más, y el servidor ya rechaza con 409 si el estado cambió.

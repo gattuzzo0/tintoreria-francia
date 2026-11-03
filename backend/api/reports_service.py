@@ -6,6 +6,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from postgrest.exceptions import APIError
 
+from api.refunds import is_void_cash_sale
 from api.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -141,31 +142,14 @@ def _payments(orders: list[dict]) -> list[dict]:
     return out
 
 
-def _branches(orders: list[dict]) -> list[dict]:
-    out = []
-    for branch in BRANCHES:
-        mine = [o for o in orders if o.get("branch") == branch]
-        out.append({"branch": branch, "orders": len(mine), "salesCents": sum(int(o["total_cents"]) for o in mine)})
-    unknown = [o for o in orders if not o.get("branch")]
-    if unknown:
-        out.append(
-            {
-                "branch": "Sin sucursal",
-                "orders": len(unknown),
-                "salesCents": sum(int(o["total_cents"]) for o in unknown),
-            }
-        )
-    return out
-
-
-def _customers(orders: list[dict], names: dict[str, str], start: date) -> dict:
+def _customers(orders: list[dict], names: dict[str, str], start: date, branch: str) -> dict:
     totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for o in orders:
         t = totals[str(o["customer_id"])]
         t[0] += 1
         t[1] += int(o["total_cents"])
     ids = list(totals)
-    returning = {str(r["customer_id"]) for r in _fetch_orders_before(ids, start)} if ids else set()
+    returning = {str(r["customer_id"]) for r in _fetch_orders_before(ids, start, branch)} if ids else set()
     top = sorted(totals.items(), key=lambda kv: kv[1][1], reverse=True)[:10]
     return {
         "newCount": len(set(ids) - returning),
@@ -177,8 +161,8 @@ def _customers(orders: list[dict], names: dict[str, str], start: date) -> dict:
     }
 
 
-def _fetch_orders_before(ids: list[str], start: date) -> list[dict]:
-    """Órdenes previas al periodo de esos clientes: si existen, el cliente es recurrente."""
+def _fetch_orders_before(ids: list[str], start: date, branch: str) -> list[dict]:
+    """Órdenes previas al periodo, de esta sucursal: si existen, el cliente es recurrente."""
     rows: list[dict] = []
     cutoff = _day_start(start).isoformat()
     for i in range(0, len(ids), _IN_CHUNK):
@@ -188,6 +172,7 @@ def _fetch_orders_before(ids: list[str], start: date) -> list[dict]:
                 lambda part=part: get_supabase()
                 .table("orders")
                 .select("customer_id")
+                .eq("branch", branch)
                 .in_("customer_id", part)
                 .lt("created_at", cutoff)
             )
@@ -247,7 +232,25 @@ def _cycle(orders: list[dict]) -> dict:
     }
 
 
-def build_report(start: date, end: date) -> dict:
+def _voided_cash_folios(branch: str) -> set[int]:
+    """Efectivo devuelto y aún no cobrado con tarjeta. Si falta la tabla, el reporte sigue."""
+    try:
+        rows = _fetch_all(
+            lambda: get_supabase()
+            .table("refunds")
+            .select("folio, original_payment, recharged_at")
+            .eq("branch", branch)
+            .eq("original_payment", "efectivo")
+        )
+    except APIError as exc:
+        if exc.code in ("42P01", "PGRST205"):
+            logger.warning("Reportes sin tabla de reembolsos; aplica la migración 000016")
+            return set()
+        raise
+    return {int(row["folio"]) for row in rows if is_void_cash_sale(row["original_payment"], row.get("recharged_at"))}
+
+
+def build_report(start: date, end: date, branch: str) -> dict:
     sb = get_supabase()
     span = (end - start).days + 1
     prev_start = start - timedelta(days=span)
@@ -258,16 +261,19 @@ def build_report(start: date, end: date) -> dict:
     orders = _fetch_all(
         lambda: sb.table("orders")
         .select(select)
+        .eq("branch", branch)
         .gte("created_at", _day_start(prev_start).isoformat())
         .lt("created_at", _day_start(end + timedelta(days=1)).isoformat())
         .order("folio")
     )
-    current = [o for o in orders if _ts(o["created_at"]).date() >= start]
-    previous = [o for o in orders if _ts(o["created_at"]).date() < start]
+    voided = _voided_cash_folios(branch)
+    current = [o for o in orders if _ts(o["created_at"]).date() >= start and int(o["folio"]) not in voided]
+    previous = [o for o in orders if _ts(o["created_at"]).date() < start and int(o["folio"]) not in voided]
 
     open_orders = _fetch_all(
         lambda: sb.table("orders")
         .select("folio, customer_id, payment_method, status, total_cents, status_updated_at, order_lines(qty)")
+        .eq("branch", branch)
         .neq("status", "entregado")
         .order("folio")
     )
@@ -278,6 +284,7 @@ def build_report(start: date, end: date) -> dict:
     services, cats = _services(current, categories)
 
     return {
+        "branch": branch,
         "start": start.isoformat(),
         "end": end.isoformat(),
         "summary": _summary(current),
@@ -287,8 +294,7 @@ def build_report(start: date, end: date) -> dict:
         "services": services,
         "categories": cats,
         "payments": _payments(current),
-        "branches": _branches(current),
-        "customers": _customers(current, names, start),
+        "customers": _customers(current, names, start, branch),
         "peak": _peak(current),
         "cycle": _cycle(current),
     }

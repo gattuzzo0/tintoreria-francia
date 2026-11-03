@@ -34,7 +34,7 @@ function invoiceYears(now = new Date()): number[] {
 }
 
 export function AccountingView() {
-  const { withAuth } = usePos();
+  const { withAuth, patchSummary } = usePos();
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth() + 1);
   const [rows, setRows] = useState<InvoiceOrder[] | null>(null);
@@ -206,21 +206,33 @@ export function AccountingView() {
                           folio={row.folio}
                           kind="pdf"
                           loaded={row.hasInvoicePdf}
-                          onLoaded={() =>
+                          onLoaded={() => {
+                            if (!row.hasInvoicePdf && row.hasInvoiceXml) {
+                              patchSummary((current) => ({
+                                ...current,
+                                incompleteInvoices: Math.max(0, current.incompleteInvoices - 1),
+                              }));
+                            }
                             setRows((current) =>
                               current?.map((item) => (item.folio === row.folio ? { ...item, hasInvoicePdf: true } : item)) ?? null,
-                            )
-                          }
+                            );
+                          }}
                         />
                         <InvoiceFileSlot
                           folio={row.folio}
                           kind="xml"
                           loaded={row.hasInvoiceXml}
-                          onLoaded={() =>
+                          onLoaded={() => {
+                            if (!row.hasInvoiceXml && row.hasInvoicePdf) {
+                              patchSummary((current) => ({
+                                ...current,
+                                incompleteInvoices: Math.max(0, current.incompleteInvoices - 1),
+                              }));
+                            }
                             setRows((current) =>
                               current?.map((item) => (item.folio === row.folio ? { ...item, hasInvoiceXml: true } : item)) ?? null,
-                            )
-                          }
+                            );
+                          }}
                         />
                       </div>
                     </td>

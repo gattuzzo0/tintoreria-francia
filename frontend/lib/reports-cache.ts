@@ -7,22 +7,22 @@ type Entry = { at: number; report: Report };
 
 const pages = new Map<string, Entry>();
 
-function key(start: string, end: string): string {
-  return `${start}\0${end}`;
+function key(branch: string, start: string, end: string): string {
+  return `${branch}\0${start}\0${end}`;
 }
 
-export function readReportCache(start: string, end: string): Report | null {
-  const hit = pages.get(key(start, end));
+export function readReportCache(branch: string, start: string, end: string): Report | null {
+  const hit = pages.get(key(branch, start, end));
   if (!hit) return null;
   if (Date.now() - hit.at > FRESH_MS) {
-    pages.delete(key(start, end));
+    pages.delete(key(branch, start, end));
     return null;
   }
   return hit.report;
 }
 
-export function writeReportCache(start: string, end: string, report: Report): void {
-  pages.set(key(start, end), { at: Date.now(), report });
+export function writeReportCache(branch: string, start: string, end: string, report: Report): void {
+  pages.set(key(branch, start, end), { at: Date.now(), report });
 }
 
 export function clearReportsCache(): void {

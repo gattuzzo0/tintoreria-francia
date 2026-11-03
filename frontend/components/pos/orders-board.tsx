@@ -158,7 +158,14 @@ export function OrdersBoard() {
   }, [hasMore, loading, loadingMore, loadMore]);
 
   const notesOrder = rows.find((o) => o.folio === notesFolio) ?? null;
-  const remember = (order: Order) => setRows((prev) => prev.map((o) => (o.folio === order.folio ? order : o)));
+  const remember = (order: Order) => {
+    if (order.status === "entregado" && page !== "entregado") {
+      setRows((prev) => prev.filter((o) => o.folio !== order.folio));
+      setExpanded((current) => (current === order.folio ? null : current));
+      return;
+    }
+    setRows((prev) => prev.map((o) => (o.folio === order.folio ? order : o)));
+  };
   const toggle = (folio: number) => setExpanded((f) => (f === folio ? null : folio));
   const noMatch = query.length > 0 && !loading && (page === "entregado" ? deliveredRows.length === 0 : rows.length === 0);
   const active = summary.recibido + summary.proceso + summary.listo;
@@ -176,6 +183,7 @@ export function OrdersBoard() {
         listo: Math.max(0, current.listo - 1),
         entregado: current.entregado + 1,
         receivableCents: Math.max(0, current.receivableCents - order.totalCents),
+        incompleteInvoices: current.incompleteInvoices + (result.wantsInvoice ? 1 : 0),
       }));
     } finally {
       setPending(null);
@@ -361,6 +369,14 @@ function InvoiceMark() {
   );
 }
 
+function RefundMark() {
+  return (
+    <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+      Reembolso
+    </span>
+  );
+}
+
 function hasOrderNote(order: Order): boolean {
   return Boolean(order.notes.trim() || order.photoId || (order.photoIds?.length ?? 0) > 0 || order.staffNotes.length > 0);
 }
@@ -448,8 +464,10 @@ function OrderPage({
             )}
           >
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-medium">#{o.folio}</span>
-                          <span className="min-w-0 truncate text-sm font-medium">{customer?.name ?? "—"}</span>
+                          {!detailsOnly && <span className="font-mono text-sm font-medium">#{o.folio}</span>}
+                          {!detailsOnly && (
+                            <span className="min-w-0 truncate text-sm font-medium">{customer?.name ?? "—"}</span>
+                          )}
                           {detailsOnly && (
                             <span className="shrink-0 font-mono text-xs text-foreground">
                               Tel. {customer?.phone || "sin registrar"}
@@ -460,7 +478,8 @@ function OrderPage({
                               <Zap className="size-3" aria-hidden /> Exprés
                             </span>
                           )}
-                          {o.wantsInvoice && <InvoiceMark />}
+                          {!detailsOnly && o.wantsInvoice && <InvoiceMark />}
+                          {!detailsOnly && o.refund && <RefundMark />}
                           {(o.notes || o.photoId || (o.photoIds?.length ?? 0) > 0 || o.staffNotes.length > 0) && (
                             <button
                               type="button"
@@ -566,6 +585,7 @@ function OrderPage({
                             ))}
                           </div>
                         )}
+                        {!detailsOnly && (
                         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                           {!detailsOnly && <span className="font-mono text-sm">{formatMoney(o.totalCents)}</span>}
                           {!detailsOnly && (
@@ -670,6 +690,7 @@ function OrderPage({
                             </Button>
                           )}
                         </div>
+                        )}
                         {(shareError?.folio === o.folio || error?.folio === o.folio) && (
                           <p role="alert" className="mt-2 text-xs text-destructive">
                             {shareError?.folio === o.folio ? shareError.message : error?.message}
@@ -751,6 +772,7 @@ function DeliveredList({
                   <span className="flex min-w-0 items-center gap-2 truncate text-sm">
                     <span className="truncate">{getCustomer(row.customerId)?.name ?? "—"}</span>
                     {row.wantsInvoice && <InvoiceMark />}
+                    {(row.refunded || detail?.refund) && <RefundMark />}
                   </span>
                   <span className="font-mono text-sm">{row.statusUpdatedAt ? formatShortDate(row.statusUpdatedAt) : "—"}</span>
                   <span

@@ -70,6 +70,8 @@ export type Order = {
   subtotalCents: number;
   taxCents: number;
   totalCents: number;
+  /** Presente si ya se devolvió el efectivo de esta orden. */
+  refund?: { originalPayment: "efectivo" | "tarjeta"; recharged: boolean } | null;
 };
 
 /** Fila del tab Entregado: sin líneas, notas ni fotos. El detalle se pide al abrirla. */
@@ -83,6 +85,8 @@ export type DeliveredOrder = {
   statusUpdatedAt: string;
   /** null en órdenes anteriores a la sucursal. */
   branch?: string | null;
+  /** El efectivo de esta orden ya se devolvió. */
+  refunded?: boolean;
 };
 
 export const CATEGORIES: Category[] = ["Prendas", "Trajes", "Hogar", "Especiales"];

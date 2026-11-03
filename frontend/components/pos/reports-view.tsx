@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Wallet } from "lucide-react";
 import { formatMoney, PAYMENT_LABEL } from "@/lib/pos-data";
+import { readBranch } from "@/lib/branches";
 import { readReportCache, writeReportCache } from "@/lib/reports-cache";
 import { fetchReport, type Report } from "@/lib/reports-api";
 import { cn } from "@/lib/utils";
@@ -59,31 +60,32 @@ function formatHours(h: number | null): string {
 
 export function ReportsView() {
   const { withAuth } = usePos();
+  const branch = readBranch();
   const [preset, setPreset] = useState<Preset>("30d");
   const [range, setRange] = useState(() => presetRange("30d"));
   const [report, setReport] = useState<Report | null>(() => {
     const initial = presetRange("30d");
-    return readReportCache(initial.start, initial.end);
+    return branch ? readReportCache(branch, initial.start, initial.end) : null;
   });
   const [error, setError] = useState<string | null>(null);
   const [showExpenses, setShowExpenses] = useState(false);
   const invalid = rangeError(range.start, range.end);
-  const fetchKey = invalid ? "" : `${range.start}:${range.end}`;
+  const fetchKey = !branch || invalid ? "" : `${branch}:${range.start}:${range.end}`;
   const [fetchedKey, setFetchedKey] = useState(fetchKey);
   if (fetchedKey !== fetchKey) {
     setFetchedKey(fetchKey);
     setError(null);
-    const hit = readReportCache(range.start, range.end);
+    const hit = branch ? readReportCache(branch, range.start, range.end) : null;
     if (hit) setReport(hit);
   }
 
   useEffect(() => {
-    if (invalid || readReportCache(range.start, range.end)) return;
+    if (!branch || invalid || readReportCache(branch, range.start, range.end)) return;
     let cancelled = false;
-    withAuth((t) => fetchReport(t, range.start, range.end)).then(
+    withAuth((t) => fetchReport(t, branch, range.start, range.end)).then(
       (r) => {
         if (cancelled) return;
-        writeReportCache(range.start, range.end, r);
+        writeReportCache(branch, range.start, range.end, r);
         setReport(r);
         setError(null);
       },
@@ -92,9 +94,13 @@ export function ReportsView() {
     return () => {
       cancelled = true;
     };
-  }, [withAuth, range.start, range.end, invalid]);
+  }, [withAuth, branch, range.start, range.end, invalid]);
 
-  const loading = !invalid && (!report || report.start !== range.start || report.end !== range.end) && !error;
+  const loading =
+    Boolean(branch) &&
+    !invalid &&
+    (!report || report.branch !== branch || report.start !== range.start || report.end !== range.end) &&
+    !error;
 
   const choosePreset = (p: Exclude<Preset, "custom">) => {
     setPreset(p);
@@ -110,6 +116,7 @@ export function ReportsView() {
           <h1 id="reports-title" className="text-2xl font-semibold tracking-tight">
             Reportes
           </h1>
+          {branch && <p className="text-sm text-muted-foreground">{branch}</p>}
         </div>
         <div className="flex flex-1 justify-center self-center">
           <div className="flex gap-1 rounded-xl border bg-card p-1" role="group" aria-label="Sección">
@@ -210,7 +217,6 @@ export function ReportsView() {
 function ReportBody({ report: r }: { report: Report }) {
   const { summary: s, previous: p } = r;
   const totalPayments = r.payments.reduce((n, x) => n + x.salesCents, 0);
-  const totalBranches = r.branches.reduce((n, x) => n + x.salesCents, 0);
   const totalCustomers = r.customers.newCount + r.customers.returningCount;
 
   return (
@@ -308,18 +314,6 @@ function ReportBody({ report: r }: { report: Report }) {
                 value: x.salesCents,
                 display: formatMoney(x.salesCents),
                 hint: totalPayments ? `${Math.round((x.salesCents / totalPayments) * 100)}% · ${x.orders} órd.` : undefined,
-              }))}
-            />
-          </section>
-          <section className={CARD} aria-labelledby="rep-branches">
-            <SectionTitle id="rep-branches" eyebrow="Ubicación" title="Ventas por sucursal" />
-            <BarList
-              rows={r.branches.map((x) => ({
-                key: x.branch,
-                label: x.branch,
-                value: x.salesCents,
-                display: formatMoney(x.salesCents),
-                hint: totalBranches ? `${Math.round((x.salesCents / totalBranches) * 100)}% · ${x.orders} órd.` : undefined,
               }))}
             />
           </section>
