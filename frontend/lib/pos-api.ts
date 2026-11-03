@@ -113,6 +113,49 @@ export type InvoiceOrder = {
   createdAt: string;
 };
 
+export type ExpensePayment = "efectivo" | "tarjeta" | "transferencia";
+
+export type Expense = {
+  id: string;
+  branch: Branch;
+  spentOn: string;
+  amountCents: number;
+  concept: string;
+  paymentMethod: ExpensePayment;
+};
+
+export type ExpenseInput = {
+  spentOn: string;
+  amountCents: number;
+  concept: string;
+  paymentMethod: ExpensePayment;
+};
+
+export const fetchExpenseMonths = (token: string, params: { branch: string; year: number }) =>
+  apiFetch<number[]>(
+    `/api/expenses/months?${new URLSearchParams({ branch: params.branch, year: String(params.year) })}`,
+    token,
+  );
+
+export const fetchExpenses = (token: string, params: { branch: string; year: number; month: number }) =>
+  apiFetch<Expense[]>(
+    `/api/expenses?${new URLSearchParams({
+      branch: params.branch,
+      year: String(params.year),
+      month: String(params.month),
+    })}`,
+    token,
+  );
+
+export const createExpense = (token: string, body: ExpenseInput & { branch: Branch }) =>
+  apiFetch<Expense>("/api/expenses", token, { method: "POST", body });
+
+export const updateExpense = (token: string, id: string, body: ExpenseInput) =>
+  apiFetch<Expense>(`/api/expenses/${encodeURIComponent(id)}`, token, { method: "PATCH", body });
+
+export const deleteExpense = (token: string, id: string) =>
+  apiFetch<void>(`/api/expenses/${encodeURIComponent(id)}`, token, { method: "DELETE" });
+
 export const fetchInvoiceOrders = (token: string, year: number, month: number) =>
   apiFetch<InvoiceOrder[]>(
     `/api/orders/invoices?${new URLSearchParams({ year: String(year), month: String(month) })}`,

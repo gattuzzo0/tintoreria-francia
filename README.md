@@ -70,7 +70,7 @@ Plantillas: `frontend/.env.example` y `backend/.env.example`. Los valores reales
 
 Las tablas no se crean al arrancar la API. En el SQL Editor de Supabase aplica, en orden, los archivos de `backend/migrations/`. `backend/supabase_schema.sql` es el esquema completo de referencia.
 
-`000012` agrega RFC y la marca de factura en la orden. `000013` agrega razón social, código postal, régimen fiscal y uso del CFDI. Sin `000013`, guardar esos campos responde 503. `000014` guarda la llave del PDF y del XML de la factura ya hecha. Sin ella, subir esos archivos responde 503.
+`000012` agrega RFC y la marca de factura en la orden. `000013` agrega razón social, código postal, régimen fiscal y uso del CFDI. Sin `000013`, guardar esos campos responde 503. `000014` guarda la llave del PDF y del XML de la factura ya hecha. Sin ella, subir esos archivos responde 503. `000015` crea la tabla de gastos. Sin ella, Gastos responde 503.
 
 ## Caché en el navegador
 
@@ -82,7 +82,7 @@ Las tablas no se crean al arrancar la API. En el SQL Editor de Supabase aplica, 
 
 Se invalida al cobrar una venta o al cambiar el estado de una orden (también el de reportes, porque esos números cambian). Notas y fotos solo invalidan la lista de órdenes. Pasados los 30 minutos, la siguiente visita vuelve a pedir datos.
 
-Clientes, Contabilidad, Catálogo y Administradores no usan esta caché: se leen al abrir el panel. Clientes, catálogo y tarifas de entrega sí quedan en memoria de la sesión desde el arranque.
+Clientes, Contabilidad, Gastos, Catálogo y Administradores no usan esta caché: se leen al abrir el panel. Clientes, catálogo y tarifas de entrega sí quedan en memoria de la sesión desde el arranque.
 
 ## Despliegue
 
