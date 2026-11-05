@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -481,18 +482,27 @@ function OrderPage({
                           {!detailsOnly && o.wantsInvoice && <InvoiceMark />}
                           {!detailsOnly && o.refund && <RefundMark />}
                           {(o.notes || o.photoId || (o.photoIds?.length ?? 0) > 0 || o.staffNotes.length > 0) && (
-                            <button
-                              type="button"
-                              aria-label={`Ver notas de la orden ${o.folio}`}
-                              title="Ver notas"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNotes(o.folio);
-                              }}
-                              className="inline-flex size-8 items-center justify-center rounded-full bg-warning md:size-6 text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30"
-                            >
-                              <CircleAlert className="size-4" aria-hidden />
-                            </button>
+                            <span className="inline-flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={`Ver notas de la orden ${o.folio}`}
+                                title="Ver notas"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNotes(o.folio);
+                                }}
+                                className="inline-flex size-8 items-center justify-center rounded-full bg-warning text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 md:size-6"
+                              >
+                                <CircleAlert className="size-4" aria-hidden />
+                              </button>
+                              {!detailsOnly && (
+                                <NoteWhatsApp
+                                  order={o}
+                                  customer={customer}
+                                  onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
+                                />
+                              )}
+                            </span>
                           )}
                           <span
                             title={detailsOnly ? undefined : `Recibida ${formatDate(o.createdAt)}`}
@@ -528,13 +538,6 @@ function OrderPage({
                               {pieces} {pieces === 1 ? "prenda" : "prendas"}
                             </span>
                           </button>
-                          {o.status === "listo" && (
-                            <NoteWhatsApp
-                              order={o}
-                              customer={customer}
-                              onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
-                            />
-                          )}
                           {o.status === "listo" && (
                             <Button
                               size="sm"
@@ -621,11 +624,6 @@ function OrderPage({
                           )}
                           {o.status !== "listo" && (
                             <span className={cn("inline-flex items-center gap-2", o.status !== "proceso" && "ml-auto")}>
-                              <NoteWhatsApp
-                                order={o}
-                                customer={customer}
-                                onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
-                              />
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -671,9 +669,9 @@ function OrderPage({
                                   ),
                                 );
                               }}
-                              className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-[#25D366] outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
+                              className="inline-flex size-8 shrink-0 items-center justify-center p-0 outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
                             >
-                              <WhatsAppMark />
+                              <WhatsAppMark className="size-full" />
                             </button>
                           )}
                           {meta.next && o.status !== "listo" && o.status !== "proceso" && (
@@ -875,17 +873,17 @@ function NoteWhatsApp({
         }
         void write.then(open, fail).finally(() => setBusy(false));
       }}
-      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-[#25D366] text-white outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
+      className="inline-flex size-8 shrink-0 items-center justify-center p-0 outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40 md:size-6"
     >
-      <WhatsAppMark />
+      <WhatsAppMark className="size-full" />
     </button>
   );
 }
 
-function WhatsAppMark() {
+function WhatsAppMark({ className = "size-5" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="size-5" aria-hidden fill="currentColor">
-      <path d="M20.5 3.5A11 11 0 0 0 2.1 17.2L1 23l5.9-1.1A11 11 0 0 0 12 23a11 11 0 0 0 8.5-19.5zM12 21a9 9 0 0 1-4.6-1.3l-.3-.2-3.4.6.7-3.3-.2-.3A9 9 0 1 1 12 21zm5-6.7c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.2-.3a.4.4 0 0 0 0-.4c0-.1-.6-1.4-.8-1.9s-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-1 2.3 5.3 5.3 0 0 0 1.1 2.8 12 12 0 0 0 4.6 4.1c.6.3 1.1.4 1.6.5a3.8 3.8 0 0 0 1.7.1 2.8 2.8 0 0 0 1.9-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.2-.3-.2-.6-.3z" />
-    </svg>
+    <span className={cn("relative block", className)}>
+      <Image src="/whatsapp.png" alt="" fill sizes="32px" />
+    </span>
   );
 }
