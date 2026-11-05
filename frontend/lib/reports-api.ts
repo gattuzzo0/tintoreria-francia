@@ -10,6 +10,7 @@ export type ReportSummary = {
 };
 
 export type Report = {
+  branch: string;
   start: string;
   end: string;
   summary: ReportSummary;
@@ -26,7 +27,6 @@ export type Report = {
   services: { serviceId: string; name: string; category: string; qty: number; revenueCents: number }[];
   categories: { category: string; qty: number; revenueCents: number }[];
   payments: { method: PaymentMethod; orders: number; salesCents: number }[];
-  branches: { branch: string; orders: number; salesCents: number }[];
   customers: {
     newCount: number;
     returningCount: number;
@@ -43,6 +43,9 @@ export type Report = {
   };
 };
 
-/** Fechas YYYY-MM-DD inclusivas. */
-export const fetchReport = (token: string, start: string, end: string) =>
-  apiFetch<Report>(`/api/reports?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`, token);
+/** Fechas YYYY-MM-DD inclusivas. Solo la sucursal de la caja abierta. */
+export const fetchReport = (token: string, branch: string, start: string, end: string) =>
+  apiFetch<Report>(
+    `/api/reports?branch=${encodeURIComponent(branch)}&from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`,
+    token,
+  );

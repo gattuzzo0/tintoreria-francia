@@ -122,6 +122,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     entregado: 0,
     receivableCents: 0,
     nextFolio: 1001,
+    incompleteInvoices: 0,
   });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const idempotencyKey = useRef<string>(crypto.randomUUID());
@@ -258,6 +259,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       nextFolio: Math.max(current.nextFolio, order.folio + 1),
       recibido: current.recibido + 1,
       receivableCents: current.receivableCents + (order.payment === "pendiente" ? order.totalCents : 0),
+      incompleteInvoices: current.incompleteInvoices + (body.wantsInvoice ? 1 : 0),
     }));
     clearDraft();
     return order;

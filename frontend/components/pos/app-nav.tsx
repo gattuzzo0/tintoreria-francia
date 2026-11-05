@@ -30,6 +30,7 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
   const { isAdmin, email, fullName, signOut } = useAuth();
   const branch = useSyncExternalStore(subscribeNoop, getBranchClient, getBranchServer);
   const readyCount = summary.listo;
+  const incompleteInvoices = summary.incompleteInvoices;
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background md:bg-background/85 md:backdrop-blur-md">
@@ -64,6 +65,19 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
                   >
                     {readyCount}
                     <span className="sr-only"> órdenes listas</span>
+                  </span>
+                )}
+                {id === "contabilidad" && incompleteInvoices > 0 && (
+                  <span
+                    className={cn(
+                      "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-mono text-[10px]",
+                      active ? "bg-background text-foreground" : "bg-primary text-primary-foreground",
+                    )}
+                  >
+                    {incompleteInvoices}
+                    <span className="sr-only">
+                      {incompleteInvoices === 1 ? " factura sin PDF o XML" : " facturas sin PDF o XML"}
+                    </span>
                   </span>
                 )}
               </button>

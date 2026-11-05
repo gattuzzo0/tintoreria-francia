@@ -158,6 +158,12 @@ class DeliveredOut(BaseModel):
     totalCents: int
     statusUpdatedAt: str
     branch: Branch | None = None
+    refunded: bool = False
+
+
+class RefundMark(BaseModel):
+    originalPayment: Literal["efectivo", "tarjeta"]
+    recharged: bool
 
 
 class OrderOut(BaseModel):
@@ -182,6 +188,7 @@ class OrderOut(BaseModel):
     subtotalCents: int
     taxCents: int
     totalCents: int
+    refund: RefundMark | None = None
 
 
 class OrderPageOut(BaseModel):
@@ -197,6 +204,7 @@ class OrderSummaryOut(BaseModel):
     entregado: int
     receivableCents: int
     nextFolio: int
+    incompleteInvoices: int
 
 
 class CustomerStatOut(BaseModel):
@@ -225,6 +233,39 @@ class InvoiceOrderOut(BaseModel):
     hasInvoiceXml: bool = False
     branch: str | None = None
     createdAt: str
+
+
+def _refund_mark(raw: dict | None) -> RefundMark | None:
+    if not raw:
+        return None
+    payment = raw.get("original_payment")
+    if payment not in ("efectivo", "tarjeta"):
+        return None
+    return RefundMark(originalPayment=payment, recharged=raw.get("recharged_at") is not None)
+
+
+def _attach_refunds(rows: list[dict]) -> None:
+    folios = [int(row["folio"]) for row in rows]
+    if not folios:
+        return
+    try:
+        res = (
+            get_supabase()
+            .table("refunds")
+            .select("folio, original_payment, recharged_at")
+            .in_("folio", folios)
+            .execute()
+        )
+    except APIError as exc:
+        if exc.code in ("42P01", "PGRST205"):
+            return
+        logger.exception("No se pudieron leer los reembolsos de la página")
+        return
+    by_folio = {int(item["folio"]): item for item in res.data or []}
+    for row in rows:
+        hit = by_folio.get(int(row["folio"]))
+        if hit:
+            row["refund_mark"] = hit
 
 
 def _iso(value) -> str:
@@ -277,6 +318,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
         subtotalCents=int(row["subtotal_cents"]),
         taxCents=int(row["tax_cents"]),
         totalCents=int(row["total_cents"]),
+        refund=_refund_mark(row.get("refund_mark")),
     )
 
 
@@ -321,7 +363,9 @@ async def _get_order_or_404(folio: int) -> dict:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo leer la orden") from None
     if not res.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Orden no encontrada")
-    return res.data[0]
+    row = res.data[0]
+    _attach_refunds([row])
+    return row
 
 
 def _delivered_out(row: dict) -> DeliveredOut:
@@ -333,6 +377,7 @@ def _delivered_out(row: dict) -> DeliveredOut:
         totalCents=int(row["total_cents"]),
         statusUpdatedAt=_iso(row["status_updated_at"]),
         branch=row.get("branch"),
+        refunded=row.get("refund_mark") is not None,
     )
 
 
@@ -442,11 +487,32 @@ def _fetch_page(order_status: str, branch: str, before: int | None, q: str) -> t
         page_size=PAGE_SIZE,
     )
     try:
-        return _rows_for_folios(columns, chosen), has_more
+        rows = _rows_for_folios(columns, chosen)
     except Exception:
         logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
         fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
-        return _rows_for_folios(fallback, chosen), has_more
+        rows = _rows_for_folios(fallback, chosen)
+    _attach_refunds(rows)
+    return rows, has_more
+
+
+def _count_incomplete_invoices() -> int:
+    """Facturas marcadas a las que les falta el PDF o el XML. Todas las sucursales."""
+    try:
+        res = (
+            get_supabase()
+            .table("orders")
+            .select("folio", count="exact", head=True)
+            .eq("wants_invoice", True)
+            .or_("invoice_pdf_key.is.null,invoice_xml_key.is.null")
+            .execute()
+        )
+    except APIError as exc:
+        if exc.code == "42703":
+            logger.warning("Conteo de facturas incompletas sin columnas; aplica la migración 000014")
+            return 0
+        raise
+    return int(res.count or 0)
 
 
 def _count_status(order_status: str, branch: str) -> int:
@@ -480,6 +546,7 @@ def _fetch_summary(branch: str) -> OrderSummaryOut:
         entregado=_count_status("entregado", branch),
         receivableCents=sum(int(row["total_cents"]) for row in receivable.data or []),
         nextFolio=last_folio + 1,
+        incompleteInvoices=_count_incomplete_invoices(),
     )
 
 

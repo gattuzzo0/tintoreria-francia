@@ -72,6 +72,8 @@ export type OrderSummary = {
   entregado: number;
   receivableCents: number;
   nextFolio: number;
+  /** Órdenes por facturar a las que les falta el PDF o el XML. */
+  incompleteInvoices: number;
 };
 
 export type CustomerStat = { customerId: string; orders: number; active: number; spentCents: number };
@@ -197,6 +199,20 @@ export async function openInvoiceFile(token: string, folio: number, kind: "pdf" 
 }
 
 export const fetchOrder = (token: string, folio: number) => apiFetch<Order>(`/api/orders/${folio}`, token);
+
+export type RefundRecord = {
+  id: string;
+  folio: number;
+  branch: string;
+  customerName: string;
+  amountCents: number;
+  originalPayment: "efectivo" | "tarjeta";
+  recharged: boolean;
+  createdAt: string;
+};
+
+export const createRefund = (token: string, folio: number, branch: string) =>
+  apiFetch<RefundRecord>("/api/refunds", token, { method: "POST", body: { folio, branch } });
 
 export const createOrder = (token: string, body: CreateOrderBody, idempotencyKey: string) =>
   apiFetch<Order>("/api/orders", token, { method: "POST", body, headers: { "Idempotency-Key": idempotencyKey } });

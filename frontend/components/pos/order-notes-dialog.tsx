@@ -7,6 +7,7 @@ import { formatDate, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NOTES_MAX, sanitizeText } from "@/lib/validation";
 import { OrderPhoto } from "./order-photo";
+import { RefundActions } from "./refund-actions";
 import { usePos } from "./pos-provider";
 
 export function OrderNotesDialog({
@@ -184,6 +185,7 @@ export function OrderNotesDialog({
             <Button type="submit" className="rounded-xl" disabled={busy || !text.trim()}>
               Guardar nota
             </Button>
+            <RefundActions order={order} onUpdated={(updated) => onUpdated?.(updated)} />
           </form>
         </div>
       )}

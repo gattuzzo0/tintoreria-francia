@@ -201,6 +201,21 @@ create table if not exists tintoreria_francia.expenses (
 create index if not exists idx_tintoreria_francia_expenses_branch_spent_on
   on tintoreria_francia.expenses (branch, spent_on desc);
 
+-- Reembolso en efectivo. Ver migrations/000016_refunds.sql.
+create table if not exists tintoreria_francia.refunds (
+  id uuid primary key default gen_random_uuid(),
+  folio integer not null unique references tintoreria_francia.orders (folio),
+  branch text not null check (branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro')),
+  amount_cents integer not null check (amount_cents > 0),
+  original_payment text not null check (original_payment in ('efectivo', 'tarjeta')),
+  recharged_at timestamptz,
+  staff_user_id uuid not null references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_tintoreria_francia_refunds_branch_created_at
+  on tintoreria_francia.refunds (branch, created_at desc);
+
 create index if not exists idx_tintoreria_francia_orders_created_at on tintoreria_francia.orders (created_at desc);
 create index if not exists idx_tintoreria_francia_orders_customer_id on tintoreria_francia.orders (customer_id);
 create index if not exists idx_tintoreria_francia_order_lines_order_folio on tintoreria_francia.order_lines (order_folio);
@@ -228,6 +243,8 @@ alter table tintoreria_francia.delivery_rates enable row level security;
 alter table tintoreria_francia.delivery_rates force row level security;
 alter table tintoreria_francia.expenses enable row level security;
 alter table tintoreria_francia.expenses force row level security;
+alter table tintoreria_francia.refunds enable row level security;
+alter table tintoreria_francia.refunds force row level security;
 
 revoke all on schema tintoreria_francia from anon, authenticated;
 revoke all on all tables in schema tintoreria_francia from anon, authenticated;

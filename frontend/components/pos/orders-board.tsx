@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -158,7 +159,14 @@ export function OrdersBoard() {
   }, [hasMore, loading, loadingMore, loadMore]);
 
   const notesOrder = rows.find((o) => o.folio === notesFolio) ?? null;
-  const remember = (order: Order) => setRows((prev) => prev.map((o) => (o.folio === order.folio ? order : o)));
+  const remember = (order: Order) => {
+    if (order.status === "entregado" && page !== "entregado") {
+      setRows((prev) => prev.filter((o) => o.folio !== order.folio));
+      setExpanded((current) => (current === order.folio ? null : current));
+      return;
+    }
+    setRows((prev) => prev.map((o) => (o.folio === order.folio ? order : o)));
+  };
   const toggle = (folio: number) => setExpanded((f) => (f === folio ? null : folio));
   const noMatch = query.length > 0 && !loading && (page === "entregado" ? deliveredRows.length === 0 : rows.length === 0);
   const active = summary.recibido + summary.proceso + summary.listo;
@@ -176,6 +184,7 @@ export function OrdersBoard() {
         listo: Math.max(0, current.listo - 1),
         entregado: current.entregado + 1,
         receivableCents: Math.max(0, current.receivableCents - order.totalCents),
+        incompleteInvoices: current.incompleteInvoices + (result.wantsInvoice ? 1 : 0),
       }));
     } finally {
       setPending(null);
@@ -361,6 +370,14 @@ function InvoiceMark() {
   );
 }
 
+function RefundMark() {
+  return (
+    <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+      Reembolso
+    </span>
+  );
+}
+
 function hasOrderNote(order: Order): boolean {
   return Boolean(order.notes.trim() || order.photoId || (order.photoIds?.length ?? 0) > 0 || order.staffNotes.length > 0);
 }
@@ -448,8 +465,10 @@ function OrderPage({
             )}
           >
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-medium">#{o.folio}</span>
-                          <span className="min-w-0 truncate text-sm font-medium">{customer?.name ?? "—"}</span>
+                          {!detailsOnly && <span className="font-mono text-sm font-medium">#{o.folio}</span>}
+                          {!detailsOnly && (
+                            <span className="min-w-0 truncate text-sm font-medium">{customer?.name ?? "—"}</span>
+                          )}
                           {detailsOnly && (
                             <span className="shrink-0 font-mono text-xs text-foreground">
                               Tel. {customer?.phone || "sin registrar"}
@@ -460,20 +479,30 @@ function OrderPage({
                               <Zap className="size-3" aria-hidden /> Exprés
                             </span>
                           )}
-                          {o.wantsInvoice && <InvoiceMark />}
+                          {!detailsOnly && o.wantsInvoice && <InvoiceMark />}
+                          {!detailsOnly && o.refund && <RefundMark />}
                           {(o.notes || o.photoId || (o.photoIds?.length ?? 0) > 0 || o.staffNotes.length > 0) && (
-                            <button
-                              type="button"
-                              aria-label={`Ver notas de la orden ${o.folio}`}
-                              title="Ver notas"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNotes(o.folio);
-                              }}
-                              className="inline-flex size-8 items-center justify-center rounded-full bg-warning md:size-6 text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30"
-                            >
-                              <CircleAlert className="size-4" aria-hidden />
-                            </button>
+                            <span className="inline-flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={`Ver notas de la orden ${o.folio}`}
+                                title="Ver notas"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNotes(o.folio);
+                                }}
+                                className="inline-flex size-8 items-center justify-center rounded-full bg-warning text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 md:size-6"
+                              >
+                                <CircleAlert className="size-4" aria-hidden />
+                              </button>
+                              {!detailsOnly && (
+                                <NoteWhatsApp
+                                  order={o}
+                                  customer={customer}
+                                  onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
+                                />
+                              )}
+                            </span>
                           )}
                           <span
                             title={detailsOnly ? undefined : `Recibida ${formatDate(o.createdAt)}`}
@@ -509,13 +538,6 @@ function OrderPage({
                               {pieces} {pieces === 1 ? "prenda" : "prendas"}
                             </span>
                           </button>
-                          {o.status === "listo" && (
-                            <NoteWhatsApp
-                              order={o}
-                              customer={customer}
-                              onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
-                            />
-                          )}
                           {o.status === "listo" && (
                             <Button
                               size="sm"
@@ -566,6 +588,7 @@ function OrderPage({
                             ))}
                           </div>
                         )}
+                        {!detailsOnly && (
                         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                           {!detailsOnly && <span className="font-mono text-sm">{formatMoney(o.totalCents)}</span>}
                           {!detailsOnly && (
@@ -601,11 +624,6 @@ function OrderPage({
                           )}
                           {o.status !== "listo" && (
                             <span className={cn("inline-flex items-center gap-2", o.status !== "proceso" && "ml-auto")}>
-                              <NoteWhatsApp
-                                order={o}
-                                customer={customer}
-                                onError={(message) => setShareError(message ? { folio: o.folio, message } : null)}
-                              />
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -651,9 +669,9 @@ function OrderPage({
                                   ),
                                 );
                               }}
-                              className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-[#25D366] outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
+                              className="inline-flex size-8 shrink-0 items-center justify-center p-0 outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
                             >
-                              <WhatsAppMark />
+                              <WhatsAppMark className="size-full" />
                             </button>
                           )}
                           {meta.next && o.status !== "listo" && o.status !== "proceso" && (
@@ -670,6 +688,7 @@ function OrderPage({
                             </Button>
                           )}
                         </div>
+                        )}
                         {(shareError?.folio === o.folio || error?.folio === o.folio) && (
                           <p role="alert" className="mt-2 text-xs text-destructive">
                             {shareError?.folio === o.folio ? shareError.message : error?.message}
@@ -751,6 +770,7 @@ function DeliveredList({
                   <span className="flex min-w-0 items-center gap-2 truncate text-sm">
                     <span className="truncate">{getCustomer(row.customerId)?.name ?? "—"}</span>
                     {row.wantsInvoice && <InvoiceMark />}
+                    {(row.refunded || detail?.refund) && <RefundMark />}
                   </span>
                   <span className="font-mono text-sm">{row.statusUpdatedAt ? formatShortDate(row.statusUpdatedAt) : "—"}</span>
                   <span
@@ -853,17 +873,17 @@ function NoteWhatsApp({
         }
         void write.then(open, fail).finally(() => setBusy(false));
       }}
-      className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-[#25D366] text-white outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
+      className="inline-flex size-8 shrink-0 items-center justify-center p-0 outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40 md:size-6"
     >
-      <WhatsAppMark />
+      <WhatsAppMark className="size-full" />
     </button>
   );
 }
 
-function WhatsAppMark() {
+function WhatsAppMark({ className = "size-5" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="size-5" aria-hidden fill="currentColor">
-      <path d="M20.5 3.5A11 11 0 0 0 2.1 17.2L1 23l5.9-1.1A11 11 0 0 0 12 23a11 11 0 0 0 8.5-19.5zM12 21a9 9 0 0 1-4.6-1.3l-.3-.2-3.4.6.7-3.3-.2-.3A9 9 0 1 1 12 21zm5-6.7c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.2-.3a.4.4 0 0 0 0-.4c0-.1-.6-1.4-.8-1.9s-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-1 2.3 5.3 5.3 0 0 0 1.1 2.8 12 12 0 0 0 4.6 4.1c.6.3 1.1.4 1.6.5a3.8 3.8 0 0 0 1.7.1 2.8 2.8 0 0 0 1.9-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.2-.3-.2-.6-.3z" />
-    </svg>
+    <span className={cn("relative block", className)}>
+      <Image src="/whatsapp.png" alt="" fill sizes="32px" />
+    </span>
   );
 }
