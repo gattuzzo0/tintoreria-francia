@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
-import { Plus, RotateCcw } from "lucide-react";
+import { ChevronRight, Menu, Plus, RotateCcw } from "lucide-react";
 import { qtyForService } from "@/lib/garment-colors";
-import { CATEGORIES, formatMoney, type Category } from "@/lib/pos-data";
+import { CATEGORIES, categoriesForMenu, formatMoney } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
+import { CategoryDrawer } from "./category-drawer";
 import { ColorRevolver } from "./color-revolver";
 import { CustomerLookup } from "./customer-lookup";
 import { usePos } from "./pos-provider";
@@ -18,7 +19,11 @@ export function ServiceCatalog({
   lookupKey?: number;
 }) {
   const { draft, addItem, clearService, services: all } = usePos();
-  const [tab, setTab] = useState<Category>("Prendas");
+  const tabs = categoriesForMenu(all.map((s) => s.category));
+  const [picked, setPicked] = useState<string>(CATEGORIES[0]);
+  const tab = tabs.includes(picked) ? picked : (tabs[0] ?? CATEGORIES[0]);
+  const [menu, setMenu] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const [picking, setPicking] = useState<{ id: string; name: string } | null>(null);
   const locked = !draft.customerId;
   const services = all.filter((s) => s.category === tab);
@@ -40,26 +45,41 @@ export function ServiceCatalog({
         />
       </div>
 
-      <div role="tablist" aria-label="Categorías" className="flex gap-1.5 sm:gap-2">
-        {CATEGORIES.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "h-9 flex-1 rounded-full border px-2 text-sm sm:h-8 sm:flex-none sm:px-4 transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
-              tab === t
-                ? "border-primary bg-primary text-primary-foreground"
-                : "bg-card text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <button
+        ref={menuButton}
+        type="button"
+        aria-expanded={menu}
+        aria-controls="category-drawer"
+        onClick={() => setMenu(true)}
+        className="flex h-12 w-full items-center gap-3 rounded-xl border bg-card px-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+      >
+        <Menu className="size-4 shrink-0" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Categoría</span>
+          <span className="block truncate text-sm font-medium">{tab}</span>
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      </button>
 
+      <CategoryDrawer
+        open={menu}
+        items={tabs.map((t) => ({ id: t, label: t, selected: t === tab }))}
+        onPick={(id) => {
+          setPicked(id);
+          setMenu(false);
+          menuButton.current?.focus();
+        }}
+        onClose={() => {
+          setMenu(false);
+          menuButton.current?.focus();
+        }}
+      />
+
+      {services.length === 0 ? (
+        <p className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+          Sin servicios en esta categoría.
+        </p>
+      ) : (
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {services.map((s) => {
           const qty = qtyForService(draft.quantities, s.id);
@@ -91,7 +111,7 @@ export function ServiceCatalog({
                   />
                 )}
                 <span className="flex items-start justify-between gap-2">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                     {s.category}
                   </span>
                   {qty > 0 ? (
@@ -128,6 +148,7 @@ export function ServiceCatalog({
           );
         })}
       </ul>
+      )}
       <ColorRevolver
         open={picking !== null}
         garment={picking?.name ?? ""}

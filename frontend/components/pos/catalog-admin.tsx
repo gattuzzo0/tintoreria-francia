@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Plus, Save, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronRight, Loader2, Menu, Plus, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RushRates } from "@/lib/delivery";
 import { createService, deleteService, fetchDeliveryRates, fetchServices, updateDeliveryRates, updateService, type ServiceInput } from "@/lib/pos-api";
-import { CATEGORIES, formatMoney, UNITS, type Category, type Service, type Unit } from "@/lib/pos-data";
+import { CATEGORIES, categoriesForMenu, formatMoney, UNITS, type Category, type Service, type Unit } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { NAME_MAX, sanitizeText } from "@/lib/validation";
+import { CategoryDrawer } from "./category-drawer";
 import { usePos } from "./pos-provider";
 
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
@@ -149,7 +150,10 @@ export function CatalogAdmin() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState<Category | null>(null);
+  const [menu, setMenu] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const visible = filter ? list?.filter((s) => s.category === filter) : list;
+  const menuCategories = categoriesForMenu((list ?? []).map((s) => s.category));
 
   useEffect(() => {
     let cancelled = false;
@@ -194,7 +198,7 @@ export function CatalogAdmin() {
 
       {adding && (
         <ServiceForm
-          initial={{ name: "", category: "Prendas", unit: "pza", price: "" }}
+          initial={{ name: "", category: CATEGORIES[0], unit: "pza", price: "" }}
           submitLabel="Crear servicio"
           onSubmit={async (input) => {
             commit(await withAuth((t) => createService(t, input)));
@@ -213,28 +217,42 @@ export function CatalogAdmin() {
         </div>
       ) : (
         <>
-          <div role="group" aria-label="Filtrar por categoría" className="flex gap-2 overflow-x-auto pb-1">
-            {[null, ...CATEGORIES].map((c) => (
-              <button
-                key={c ?? "todos"}
-                type="button"
-                aria-pressed={filter === c}
-                onClick={() => setFilter(c)}
-                className={cn(
-                  "h-9 shrink-0 rounded-full border px-4 text-sm transition-colors",
-                  FOCUS,
-                  filter === c
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "bg-card text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {c ?? "Todos"}
-                <span className="ml-1.5 font-mono text-xs">
-                  {c ? list.filter((s) => s.category === c).length : list.length}
-                </span>
-              </button>
-            ))}
-          </div>
+          <button
+            ref={menuButton}
+            type="button"
+            aria-expanded={menu}
+            aria-controls="category-drawer"
+            onClick={() => setMenu(true)}
+            className={cn("flex h-12 w-full items-center gap-3 rounded-xl border bg-card px-3 text-left", FOCUS)}
+          >
+            <Menu className="size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Categoría</span>
+              <span className="block truncate text-sm font-medium">{filter ?? "Todos"}</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          </button>
+          <CategoryDrawer
+            open={menu}
+            items={[
+              { id: "", label: "Todos", count: list.length, selected: filter === null },
+              ...menuCategories.map((c) => ({
+                id: c,
+                label: c,
+                count: list.filter((s) => s.category === c).length,
+                selected: filter === c,
+              })),
+            ]}
+            onPick={(id) => {
+              setFilter(id ? (id as Category) : null);
+              setMenu(false);
+              menuButton.current?.focus();
+            }}
+            onClose={() => {
+              setMenu(false);
+              menuButton.current?.focus();
+            }}
+          />
           {visible?.length === 0 && (
             <p className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
               Sin servicios en esta categoría.
@@ -319,7 +337,7 @@ function ServiceRow({
     <li className={cn("flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3", !service.active && "border-dashed bg-muted/40")}>
       <span className="w-10 font-mono text-xs text-muted-foreground">{service.id}</span>
       <span className="min-w-40 flex-1 text-sm font-medium">{service.name}</span>
-      <span className="w-24 text-xs text-muted-foreground">{service.category}</span>
+      <span className="w-44 text-xs leading-snug text-muted-foreground">{service.category}</span>
       <span className="w-28 text-right font-mono text-sm">
         {formatMoney(service.priceCents)}
         <span className="text-xs text-muted-foreground"> /{service.unit}</span>
@@ -397,7 +415,7 @@ function ServiceForm({
 
   return (
     <form noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-3 rounded-xl border bg-card p-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_9rem_6rem_8rem]">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(14rem,1fr)_5rem_7rem]">
         <label className="flex flex-col gap-1">
           <span className={LABEL}>Nombre</span>
           <input

@@ -16,8 +16,24 @@ from api.validation import NAME_MAX, sanitize_text
 logger = logging.getLogger(__name__)
 catalog_router = APIRouter()
 
-Category = Literal["Prendas", "Trajes", "Hogar", "Especiales"]
-Unit = Literal["pza", "kg", "par"]
+Category = Literal[
+    "Abrigos, gabardinas y prendas de invierno",
+    "Chamarras y prendas deportivas",
+    "Sacos, blazers y trajes",
+    "Pantalones y prendas inferiores",
+    "Camisas, blusas y prendas superiores",
+    "Vestidos",
+    "Faldas",
+    "Suéteres y tejidos",
+    "Ropa de caballero y accesorios",
+    "Ropa infantil y de bebé",
+    "Ropa de cama",
+    "Cortinas y decoración textil",
+    "Uniformes y ropa de trabajo",
+    "Artículos especiales",
+    "Servicios adicionales de lavandería",
+]
+Unit = Literal["pza", "kg", "par", "m"]
 _SELECT = "id, name, category, unit, price_cents, image_path, active, sort_order"
 # Precios en pesos enteros de 1 a 99,999, guardados en centavos.
 _PRICE_MAX_CENTS = 99_999 * 100
@@ -32,7 +48,8 @@ def _whole_pesos(v: int | None) -> int | None:
 class ServiceOut(BaseModel):
     id: str
     name: str
-    category: Category
+    # str: hasta aplicar 000017 la base todavía puede traer Prendas/Trajes/Hogar/Especiales.
+    category: str
     unit: Unit
     priceCents: int
     imagePath: str | None
