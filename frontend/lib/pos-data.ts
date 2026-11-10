@@ -1,5 +1,29 @@
-export type Category = "Prendas" | "Trajes" | "Hogar" | "Especiales";
-export type Unit = "pza" | "kg" | "par";
+export const CATEGORIES = [
+  "Abrigos, gabardinas y prendas de invierno",
+  "Chamarras y prendas deportivas",
+  "Sacos, blazers y trajes",
+  "Pantalones y prendas inferiores",
+  "Camisas, blusas y prendas superiores",
+  "Vestidos",
+  "Faldas",
+  "Suéteres y tejidos",
+  "Ropa de caballero y accesorios",
+  "Ropa infantil y de bebé",
+  "Ropa de cama",
+  "Cortinas y decoración textil",
+  "Uniformes y ropa de trabajo",
+  "Artículos especiales",
+  "Servicios adicionales de lavandería",
+] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+/** Catálogo nuevo completo. Si la base sigue en el viejo, esas categorías. */
+export function categoriesForMenu(present: Iterable<string>): readonly string[] {
+  const set = present instanceof Set ? present : new Set(present);
+  if (CATEGORIES.some((c) => set.has(c))) return CATEGORIES;
+  return [...set];
+}
+export type Unit = "pza" | "kg" | "par" | "m";
 
 export type Service = {
   id: string;
@@ -89,8 +113,7 @@ export type DeliveredOrder = {
   refunded?: boolean;
 };
 
-export const CATEGORIES: Category[] = ["Prendas", "Trajes", "Hogar", "Especiales"];
-export const UNITS: Unit[] = ["pza", "kg", "par"];
+export const UNITS: Unit[] = ["pza", "kg", "par", "m"];
 
 export const TAX_RATE = 0.16;
 /** Centavos enteros; misma fórmula que tintoreria_francia.recalc_order_totals (precios con IVA). */

@@ -35,8 +35,24 @@ create sequence if not exists tintoreria_francia.services_id_seq start 21;
 create table if not exists tintoreria_francia.services (
   id text primary key default ('s' || nextval('tintoreria_francia.services_id_seq')),
   name text not null check (char_length(name) between 1 and 60),
-  category text not null check (category in ('Prendas', 'Trajes', 'Hogar', 'Especiales')),
-  unit text not null check (unit in ('pza', 'kg', 'par')),
+  category text not null check (category in (
+    'Abrigos, gabardinas y prendas de invierno',
+    'Chamarras y prendas deportivas',
+    'Sacos, blazers y trajes',
+    'Pantalones y prendas inferiores',
+    'Camisas, blusas y prendas superiores',
+    'Vestidos',
+    'Faldas',
+    'Suéteres y tejidos',
+    'Ropa de caballero y accesorios',
+    'Ropa infantil y de bebé',
+    'Ropa de cama',
+    'Cortinas y decoración textil',
+    'Uniformes y ropa de trabajo',
+    'Artículos especiales',
+    'Servicios adicionales de lavandería'
+  )),
+  unit text not null check (unit in ('pza', 'kg', 'par', 'm')),
   price_cents integer not null check (price_cents between 1 and 10000000),
   image_path text,
   active boolean not null default true,
@@ -444,28 +460,484 @@ grant execute on function tintoreria_francia.create_order(uuid, uuid, boolean, t
 -- ---------------------------------------------------------------------
 -- Datos iniciales
 -- ---------------------------------------------------------------------
-insert into tintoreria_francia.services (id, name, category, unit, price_cents, image_path, sort_order) values
-  ('s1',  'Camisa',              'Prendas',    'pza',   4500, '/services/s1.png',   1),
-  ('s2',  'Blusa',               'Prendas',    'pza',   5500, '/services/s2.png',   2),
-  ('s3',  'Pantalón',            'Prendas',    'pza',   7000, '/services/s3.png',   3),
-  ('s4',  'Falda',               'Prendas',    'pza',   6500, '/services/s4.png',   4),
-  ('s5',  'Suéter',              'Prendas',    'pza',   8500, '/services/s5.png',   5),
-  ('s6',  'Abrigo',              'Prendas',    'pza',  22000, '/services/s6.png',   6),
-  ('s7',  'Lavado por kilo',     'Prendas',    'kg',    3800, '/services/s7.png',   7),
-  ('s8',  'Traje 2 piezas',      'Trajes',     'pza',  21000, '/services/s8.png',   8),
-  ('s9',  'Traje 3 piezas',      'Trajes',     'pza',  26000, '/services/s9.png',   9),
-  ('s10', 'Saco',                'Trajes',     'pza',  14000, '/services/s10.png', 10),
-  ('s11', 'Corbata',             'Trajes',     'pza',   5000, '/services/s11.png', 11),
-  ('s12', 'Edredón matrimonial', 'Hogar',      'pza',  32000, '/services/s12.png', 12),
-  ('s13', 'Edredón king',        'Hogar',      'pza',  38000, '/services/s13.png', 13),
-  ('s14', 'Cortina (panel)',     'Hogar',      'pza',  16000, '/services/s14.png', 14),
-  ('s15', 'Mantel',              'Hogar',      'pza',  12000, '/services/s15.png', 15),
-  ('s16', 'Vestido de noche',    'Especiales', 'pza',  38000, '/services/s16.png', 16),
-  ('s17', 'Vestido de novia',    'Especiales', 'pza', 145000, '/services/s17.png', 17),
-  ('s18', 'Prenda de piel',      'Especiales', 'pza',  52000, '/services/s18.png', 18),
-  ('s19', 'Tenis',               'Especiales', 'par',  18000, '/services/s19.png', 19),
-  ('s20', 'Desmanchado',         'Especiales', 'pza',   9000, '/services/s20.png', 20)
+-- Catálogo vigente. En una base ya poblada, aplicar migrations/000017_catalog.sql
+-- (este insert no pisa filas existentes: on conflict do nothing).
+insert into tintoreria_francia.services (id, name, category, unit, price_cents, sort_order) values
+  ('s1', 'Abrigo', 'Abrigos, gabardinas y prendas de invierno', 'pza', 12000, 1),
+  ('s2', 'Abrigo de cashmere', 'Abrigos, gabardinas y prendas de invierno', 'pza', 15000, 2),
+  ('s3', 'Abrigo con forro', 'Abrigos, gabardinas y prendas de invierno', 'pza', 15000, 3),
+  ('s4', 'Gabardina corta', 'Abrigos, gabardinas y prendas de invierno', 'pza', 12000, 4),
+  ('s5', 'Gabardina con forro', 'Abrigos, gabardinas y prendas de invierno', 'pza', 15000, 5),
+  ('s6', 'Capa', 'Abrigos, gabardinas y prendas de invierno', 'pza', 12000, 6),
+  ('s7', 'Poncho', 'Abrigos, gabardinas y prendas de invierno', 'pza', 15000, 7),
+  ('s8', 'Ruana/zarape', 'Abrigos, gabardinas y prendas de invierno', 'pza', 18000, 8),
+  ('s9', 'Chamarra ligera', 'Chamarras y prendas deportivas', 'pza', 9000, 9),
+  ('s10', 'Chamarra de mezclilla', 'Chamarras y prendas deportivas', 'pza', 10000, 10),
+  ('s11', 'Chamarra', 'Chamarras y prendas deportivas', 'pza', 12000, 11),
+  ('s12', 'Chamarra de plumas', 'Chamarras y prendas deportivas', 'pza', 17000, 12),
+  ('s13', 'Chamarra impermeable', 'Chamarras y prendas deportivas', 'pza', 12000, 13),
+  ('s14', 'Chamarra rompevientos', 'Chamarras y prendas deportivas', 'pza', 10000, 14),
+  ('s15', 'Chamarra de piel', 'Chamarras y prendas deportivas', 'pza', 35000, 15),
+  ('s16', 'Chamarra de gamuza', 'Chamarras y prendas deportivas', 'pza', 25000, 16),
+  ('s17', 'Chamarra de motociclista/piel', 'Chamarras y prendas deportivas', 'pza', 45000, 17),
+  ('s18', 'Chaleco ligero', 'Chamarras y prendas deportivas', 'pza', 9000, 18),
+  ('s19', 'Chaleco relleno', 'Chamarras y prendas deportivas', 'pza', 10000, 19),
+  ('s20', 'Chaleco de plumas', 'Chamarras y prendas deportivas', 'pza', 13000, 20),
+  ('s21', 'Chaleco de vestir/mezclilla o tela', 'Chamarras y prendas deportivas', 'pza', 9000, 21),
+  ('s22', 'Chaleco de piel', 'Chamarras y prendas deportivas', 'pza', 20000, 22),
+  ('s23', 'Sudadera', 'Chamarras y prendas deportivas', 'pza', 9000, 23),
+  ('s24', 'Pants', 'Chamarras y prendas deportivas', 'pza', 9000, 24),
+  ('s25', 'Conjunto deportivo', 'Chamarras y prendas deportivas', 'pza', 18000, 25),
+  ('s26', 'Saco de caballero', 'Sacos, blazers y trajes', 'pza', 9000, 26),
+  ('s27', 'Saco de lino', 'Sacos, blazers y trajes', 'pza', 10000, 27),
+  ('s28', 'Blazer', 'Sacos, blazers y trajes', 'pza', 9000, 28),
+  ('s29', 'Saco con bordados', 'Sacos, blazers y trajes', 'pza', 12000, 29),
+  ('s30', 'Saco de etiqueta', 'Sacos, blazers y trajes', 'pza', 12000, 30),
+  ('s31', 'Smoking 2 piezas', 'Sacos, blazers y trajes', 'pza', 20000, 31),
+  ('s32', 'Traje de dos piezas', 'Sacos, blazers y trajes', 'pza', 18000, 32),
+  ('s33', 'Traje de tres piezas', 'Sacos, blazers y trajes', 'pza', 23000, 33),
+  ('s34', 'Traje de lino 2 piezas', 'Sacos, blazers y trajes', 'pza', 20000, 34),
+  ('s35', 'Chaleco de traje', 'Sacos, blazers y trajes', 'pza', 5000, 35),
+  ('s36', 'Pantalón de traje/pantalón', 'Sacos, blazers y trajes', 'pza', 9000, 36),
+  ('s37', 'Pantalón de lino', 'Pantalones y prendas inferiores', 'pza', 10000, 37),
+  ('s38', 'Pantalón de seda', 'Pantalones y prendas inferiores', 'pza', 10000, 38),
+  ('s39', 'Pantalón de piel', 'Pantalones y prendas inferiores', 'pza', 20000, 39),
+  ('s40', 'Leggings', 'Pantalones y prendas inferiores', 'pza', 9000, 40),
+  ('s41', 'Falda pantalón', 'Pantalones y prendas inferiores', 'pza', 12000, 41),
+  ('s42', 'Overol', 'Pantalones y prendas inferiores', 'pza', 12000, 42),
+  ('s43', 'Jumpsuit', 'Pantalones y prendas inferiores', 'pza', 16000, 43),
+  ('s44', 'Camisa de caballero manga larga/corta', 'Camisas, blusas y prendas superiores', 'pza', 9000, 44),
+  ('s45', 'Camisa de lino', 'Camisas, blusas y prendas superiores', 'pza', 10000, 45),
+  ('s46', 'Camisa de seda', 'Camisas, blusas y prendas superiores', 'pza', 10000, 46),
+  ('s47', 'Camisa con bordados', 'Camisas, blusas y prendas superiores', 'pza', 12000, 47),
+  ('s48', 'Blusa', 'Camisas, blusas y prendas superiores', 'pza', 9000, 48),
+  ('s49', 'Blusa de seda', 'Camisas, blusas y prendas superiores', 'pza', 10000, 49),
+  ('s50', 'Blusa de lino', 'Camisas, blusas y prendas superiores', 'pza', 10000, 50),
+  ('s51', 'Blusa bordada', 'Camisas, blusas y prendas superiores', 'pza', 12000, 51),
+  ('s52', 'Blusa con olanes', 'Camisas, blusas y prendas superiores', 'pza', 10000, 52),
+  ('s53', 'Blusón', 'Camisas, blusas y prendas superiores', 'pza', 10000, 53),
+  ('s54', 'Túnica', 'Camisas, blusas y prendas superiores', 'pza', 18000, 54),
+  ('s55', 'Playera', 'Camisas, blusas y prendas superiores', 'pza', 9000, 55),
+  ('s56', 'Top', 'Camisas, blusas y prendas superiores', 'pza', 9000, 56),
+  ('s57', 'Crop top', 'Camisas, blusas y prendas superiores', 'pza', 9000, 57),
+  ('s58', 'Corsé', 'Camisas, blusas y prendas superiores', 'pza', 9000, 58),
+  ('s59', 'Vestido casual', 'Vestidos', 'pza', 9000, 59),
+  ('s60', 'Vestido camisero', 'Vestidos', 'pza', 10000, 60),
+  ('s61', 'Vestido de seda', 'Vestidos', 'pza', 12000, 61),
+  ('s62', 'Vestido de lino', 'Vestidos', 'pza', 12000, 62),
+  ('s63', 'Vestido de punto/tejido', 'Vestidos', 'pza', 12000, 63),
+  ('s64', 'Vestido de mezclilla', 'Vestidos', 'pza', 10000, 64),
+  ('s65', 'Vestido de noche', 'Vestidos', 'pza', 12000, 65),
+  ('s66', 'Vestido con varias capas', 'Vestidos', 'pza', 16000, 66),
+  ('s67', 'Vestido de seda de fiesta', 'Vestidos', 'pza', 16000, 67),
+  ('s68', 'Vestido tableado', 'Vestidos', 'pza', 20000, 68),
+  ('s69', 'Vestido con cola', 'Vestidos', 'pza', 15000, 69),
+  ('s70', 'Vestido de novia', 'Vestidos', 'pza', 60000, 70),
+  ('s71', 'Vestido de quinceañera', 'Vestidos', 'pza', 60000, 71),
+  ('s72', 'Vestido de primera comunión', 'Vestidos', 'pza', 30000, 72),
+  ('s73', 'Vestido de bautizo', 'Vestidos', 'pza', 25000, 73),
+  ('s74', 'Vestido de presentación', 'Vestidos', 'pza', 30000, 74),
+  ('s75', 'Velo de novia', 'Vestidos', 'pza', 10000, 75),
+  ('s76', 'Falda', 'Faldas', 'pza', 9000, 76),
+  ('s77', 'Falda plisada', 'Faldas', 'pza', 13000, 77),
+  ('s78', 'Falda de tablas', 'Faldas', 'pza', 16000, 78),
+  ('s79', 'Falda de mezclilla', 'Faldas', 'pza', 9000, 79),
+  ('s80', 'Falda de vestir', 'Faldas', 'pza', 9000, 80),
+  ('s81', 'Falda de piel', 'Faldas', 'pza', 15000, 81),
+  ('s82', 'Falda bordada', 'Faldas', 'pza', 12000, 82),
+  ('s83', 'Suéter/cardigan', 'Suéteres y tejidos', 'pza', 9000, 83),
+  ('s84', 'Poncho tejido', 'Suéteres y tejidos', 'pza', 16000, 84),
+  ('s85', 'Chal tejido', 'Suéteres y tejidos', 'pza', 12000, 85),
+  ('s86', 'Chalina', 'Suéteres y tejidos', 'pza', 10000, 86),
+  ('s87', 'Bufanda', 'Suéteres y tejidos', 'pza', 8000, 87),
+  ('s88', 'Pashmina', 'Suéteres y tejidos', 'pza', 8000, 88),
+  ('s89', 'Cuello tejido', 'Suéteres y tejidos', 'pza', 7000, 89),
+  ('s90', 'Guantes', 'Suéteres y tejidos', 'pza', 7000, 90),
+  ('s91', 'Gorro', 'Suéteres y tejidos', 'pza', 7000, 91),
+  ('s92', 'Boina', 'Suéteres y tejidos', 'pza', 7000, 92),
+  ('s93', 'Pasamontañas', 'Suéteres y tejidos', 'pza', 7000, 93),
+  ('s94', 'Corbata', 'Ropa de caballero y accesorios', 'pza', 6000, 94),
+  ('s95', 'Corbatín', 'Ropa de caballero y accesorios', 'pza', 6000, 95),
+  ('s96', 'Pañuelo de bolsillo', 'Ropa de caballero y accesorios', 'pza', 6000, 96),
+  ('s97', 'Pañuelo de vestir', 'Ropa de caballero y accesorios', 'pza', 6000, 97),
+  ('s98', 'Fajín', 'Ropa de caballero y accesorios', 'pza', 7000, 98),
+  ('s99', 'Tirantes textiles', 'Ropa de caballero y accesorios', 'pza', 6000, 99),
+  ('s100', 'Chaleco formal', 'Ropa de caballero y accesorios', 'pza', 5000, 100),
+  ('s101', 'Mascada', 'Ropa de caballero y accesorios', 'pza', 6000, 101),
+  ('s102', 'Pañuelo de seda', 'Ropa de caballero y accesorios', 'pza', 6000, 102),
+  ('s103', 'Vestido infantil', 'Ropa infantil y de bebé', 'pza', 9000, 103),
+  ('s104', 'Vestido de fiesta infantil', 'Ropa infantil y de bebé', 'pza', 11000, 104),
+  ('s105', 'Traje infantil', 'Ropa infantil y de bebé', 'pza', 9000, 105),
+  ('s106', 'Saco infantil', 'Ropa infantil y de bebé', 'pza', 5000, 106),
+  ('s107', 'Pantalón infantil', 'Ropa infantil y de bebé', 'pza', 5000, 107),
+  ('s108', 'Camisa infantil', 'Ropa infantil y de bebé', 'pza', 5000, 108),
+  ('s109', 'Blusa infantil', 'Ropa infantil y de bebé', 'pza', 5000, 109),
+  ('s110', 'Suéter infantil', 'Ropa infantil y de bebé', 'pza', 5000, 110),
+  ('s111', 'Chamarra infantil', 'Ropa infantil y de bebé', 'pza', 9000, 111),
+  ('s112', 'Abrigo infantil', 'Ropa infantil y de bebé', 'pza', 10000, 112),
+  ('s113', 'Sábana de cajón', 'Ropa de cama', 'pza', 7000, 113),
+  ('s114', 'Sábana plana', 'Ropa de cama', 'pza', 7000, 114),
+  ('s115', 'Funda de almohada', 'Ropa de cama', 'pza', 5000, 115),
+  ('s116', 'Protector de colchón', 'Ropa de cama', 'pza', 15000, 116),
+  ('s117', 'Cubrecolchón Sonagre', 'Ropa de cama', 'pza', 29900, 117),
+  ('s118', 'Edredón', 'Ropa de cama', 'pza', 18000, 118),
+  ('s119', 'Edredón de plumas', 'Ropa de cama', 'pza', 22000, 119),
+  ('s120', 'Cobertor', 'Ropa de cama', 'pza', 15000, 120),
+  ('s121', 'Colcha', 'Ropa de cama', 'pza', 13000, 121),
+  ('s122', 'Pie de cama', 'Ropa de cama', 'pza', 9000, 122),
+  ('s123', 'Manta', 'Ropa de cama', 'pza', 9000, 123),
+  ('s124', 'Frazada', 'Ropa de cama', 'pza', 12000, 124),
+  ('s125', 'Almohada', 'Ropa de cama', 'pza', 12000, 125),
+  ('s126', 'Cojín tubular largo', 'Ropa de cama', 'pza', 15000, 126),
+  ('s127', 'Cojín decorativo con relleno', 'Ropa de cama', 'pza', 9000, 127),
+  ('s128', 'Cortina ligera por metro', 'Cortinas y decoración textil', 'm', 12000, 128),
+  ('s129', 'Cortina gruesa por metro', 'Cortinas y decoración textil', 'm', 18000, 129),
+  ('s130', 'Cortina blackout por metro', 'Cortinas y decoración textil', 'm', 25000, 130),
+  ('s131', 'Cortina de lino por metro', 'Cortinas y decoración textil', 'm', 22000, 131),
+  ('s132', 'Cortina de terciopelo por metro', 'Cortinas y decoración textil', 'm', 22000, 132),
+  ('s133', 'Cortina con forro por metro', 'Cortinas y decoración textil', 'm', 22000, 133),
+  ('s134', 'Visillo', 'Cortinas y decoración textil', 'pza', 6000, 134),
+  ('s135', 'Faldón de cama', 'Cortinas y decoración textil', 'pza', 12000, 135),
+  ('s136', 'Mantel decorativo por metro', 'Cortinas y decoración textil', 'm', 15000, 136),
+  ('s137', 'Camino de mesa', 'Cortinas y decoración textil', 'pza', 8000, 137),
+  ('s138', 'Individuales de tela', 'Cortinas y decoración textil', 'pza', 6000, 138),
+  ('s139', 'Servilletas de tela', 'Cortinas y decoración textil', 'pza', 4000, 139),
+  ('s140', 'Fundas de sillas completa', 'Cortinas y decoración textil', 'pza', 12000, 140),
+  ('s141', 'Fundas de cojines 30x30', 'Cortinas y decoración textil', 'pza', 6000, 141),
+  ('s142', 'Toalla grande de baño', 'Cortinas y decoración textil', 'pza', 6000, 142),
+  ('s143', 'Bata de laboratorio', 'Uniformes y ropa de trabajo', 'pza', 10000, 143),
+  ('s144', 'Bata médica', 'Uniformes y ropa de trabajo', 'pza', 10000, 144),
+  ('s145', 'Filipina', 'Uniformes y ropa de trabajo', 'pza', 14000, 145),
+  ('s146', 'Uniforme de enfermería', 'Uniformes y ropa de trabajo', 'pza', 18000, 146),
+  ('s147', 'Uniforme de cocina', 'Uniformes y ropa de trabajo', 'pza', 18000, 147),
+  ('s148', 'Mandil de cocina', 'Uniformes y ropa de trabajo', 'pza', 10000, 148),
+  ('s149', 'Uniforme industrial', 'Uniformes y ropa de trabajo', 'pza', 20000, 149),
+  ('s150', 'Overol de trabajo', 'Uniformes y ropa de trabajo', 'pza', 20000, 150),
+  ('s151', 'Uniforme de seguridad', 'Uniformes y ropa de trabajo', 'pza', 18000, 151),
+  ('s152', 'Disfraz infantil', 'Artículos especiales', 'pza', 18000, 152),
+  ('s153', 'Disfraz adulto', 'Artículos especiales', 'pza', 20000, 153),
+  ('s154', 'Vestuario teatral', 'Artículos especiales', 'pza', 25000, 154),
+  ('s155', 'Vestuario de danza', 'Artículos especiales', 'pza', 25000, 155),
+  ('s156', 'Traje regional', 'Artículos especiales', 'pza', 25000, 156),
+  ('s157', 'Vestido típico', 'Artículos especiales', 'pza', 25000, 157),
+  ('s158', 'Traje de charro 2 piezas', 'Artículos especiales', 'pza', 20000, 158),
+  ('s159', 'Traje de mariachi', 'Artículos especiales', 'pza', 20000, 159),
+  ('s160', 'Toga de graduación', 'Artículos especiales', 'pza', 25000, 160),
+  ('s161', 'Birrete', 'Artículos especiales', 'pza', 10000, 161),
+  ('s162', 'Bandera textil por metro', 'Artículos especiales', 'm', 15000, 162),
+  ('s163', 'Banderín', 'Artículos especiales', 'pza', 9000, 163),
+  ('s164', 'Peluche pequeño', 'Artículos especiales', 'pza', 6000, 164),
+  ('s165', 'Peluche mediano', 'Artículos especiales', 'pza', 12000, 165),
+  ('s166', 'Peluche grande', 'Artículos especiales', 'pza', 25000, 166),
+  ('s167', 'Bolsa de tela', 'Artículos especiales', 'pza', 15000, 167),
+  ('s168', 'Mochila de tela', 'Artículos especiales', 'pza', 12000, 168),
+  ('s169', 'Pañalera textil', 'Artículos especiales', 'pza', 15000, 169),
+  ('s170', 'Autoasiento de bebé', 'Artículos especiales', 'pza', 30000, 170),
+  ('s171', 'Tenis de tela', 'Artículos especiales', 'par', 15000, 171),
+  ('s172', 'Tenis de piel', 'Artículos especiales', 'par', 28000, 172),
+  ('s173', 'Lavado por kilogramo', 'Servicios adicionales de lavandería', 'kg', 3500, 173),
+  ('s174', 'Lavado de ropa blanca', 'Servicios adicionales de lavandería', 'kg', 4500, 174),
+  ('s175', 'Lavado de ropa de bebé', 'Servicios adicionales de lavandería', 'kg', 5500, 175),
+  ('s176', 'Kilo de lavado hipoalergénico', 'Servicios adicionales de lavandería', 'kg', 8000, 176)
 on conflict (id) do nothing;
+
+select setval(
+  'tintoreria_francia.services_id_seq',
+  greatest(
+    (select last_value from tintoreria_francia.services_id_seq),
+    (select coalesce(max((regexp_match(id, '^s([0-9]+)$'))[1]::int), 1) from tintoreria_francia.services)
+  )
+);
+
+update tintoreria_francia.services
+set image_path = '/services/abrigo.jpg'
+where name = 'Abrigo'
+  and category = 'Abrigos, gabardinas y prendas de invierno';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Abrigo de cashmere', '/services/abrigo-cashmere.jpg'),
+  ('Abrigo con forro', '/services/abrigo-forro.jpg'),
+  ('Gabardina corta', '/services/gabardina-corta.jpg'),
+  ('Gabardina con forro', '/services/gabardina-forro.jpg'),
+  ('Capa', '/services/capa.jpg'),
+  ('Poncho', '/services/poncho.jpg'),
+  ('Ruana/zarape', '/services/ruana-zarape.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Abrigos, gabardinas y prendas de invierno';
+
+-- Fotos del catálogo fuera de Abrigos. Abrigo y sus variantes están en 000018 y 000019.
+-- Rollback: update tintoreria_francia.services set image_path = null
+--   where image_path like '/services/%.jpg'
+--     and category <> 'Abrigos, gabardinas y prendas de invierno';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Chamarra ligera', '/services/chamarra-ligera.jpg'),
+  ('Chamarra de mezclilla', '/services/chamarra-mezclilla.jpg'),
+  ('Chamarra', '/services/chamarra.jpg'),
+  ('Chamarra de plumas', '/services/chamarra-plumas.jpg'),
+  ('Chamarra impermeable', '/services/chamarra-impermeable.jpg'),
+  ('Chamarra rompevientos', '/services/chamarra-rompevientos.jpg'),
+  ('Chamarra de piel', '/services/chamarra-piel.jpg'),
+  ('Chamarra de gamuza', '/services/chamarra-gamuza.jpg'),
+  ('Chamarra de motociclista/piel', '/services/chamarra-motociclista.jpg'),
+  ('Chaleco ligero', '/services/chaleco-ligero.jpg'),
+  ('Chaleco relleno', '/services/chaleco-relleno.jpg'),
+  ('Chaleco de plumas', '/services/chaleco-plumas.jpg'),
+  ('Chaleco de vestir/mezclilla o tela', '/services/chaleco-vestir.jpg'),
+  ('Chaleco de piel', '/services/chaleco-piel.jpg'),
+  ('Sudadera', '/services/sudadera.jpg'),
+  ('Pants', '/services/pants.jpg'),
+  ('Conjunto deportivo', '/services/conjunto-deportivo.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Chamarras y prendas deportivas';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Saco de caballero', '/services/saco-caballero.jpg'),
+  ('Saco de lino', '/services/saco-lino.jpg'),
+  ('Blazer', '/services/blazer.jpg'),
+  ('Saco con bordados', '/services/saco-bordados.jpg'),
+  ('Saco de etiqueta', '/services/saco-etiqueta.jpg'),
+  ('Smoking 2 piezas', '/services/smoking-2-piezas.jpg'),
+  ('Traje de dos piezas', '/services/traje-dos-piezas.jpg'),
+  ('Traje de tres piezas', '/services/traje-tres-piezas.jpg'),
+  ('Traje de lino 2 piezas', '/services/traje-lino-2-piezas.jpg'),
+  ('Chaleco de traje', '/services/chaleco-traje.jpg'),
+  ('Pantalón de traje/pantalón', '/services/pantalon-traje.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Sacos, blazers y trajes';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Pantalón de lino', '/services/pantalon-lino.jpg'),
+  ('Pantalón de seda', '/services/pantalon-seda.jpg'),
+  ('Pantalón de piel', '/services/pantalon-piel.jpg'),
+  ('Leggings', '/services/leggings.jpg'),
+  ('Falda pantalón', '/services/falda-pantalon.jpg'),
+  ('Overol', '/services/overol.jpg'),
+  ('Jumpsuit', '/services/jumpsuit.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Pantalones y prendas inferiores';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Camisa de caballero manga larga/corta', '/services/camisa-caballero.jpg'),
+  ('Camisa de lino', '/services/camisa-lino.jpg'),
+  ('Camisa de seda', '/services/camisa-seda.jpg'),
+  ('Camisa con bordados', '/services/camisa-bordados.jpg'),
+  ('Blusa', '/services/blusa.jpg'),
+  ('Blusa de seda', '/services/blusa-seda.jpg'),
+  ('Blusa de lino', '/services/blusa-lino.jpg'),
+  ('Blusa bordada', '/services/blusa-bordada.jpg'),
+  ('Blusa con olanes', '/services/blusa-olanes.jpg'),
+  ('Blusón', '/services/bluson.jpg'),
+  ('Túnica', '/services/tunica.jpg'),
+  ('Playera', '/services/playera.jpg'),
+  ('Top', '/services/top.jpg'),
+  ('Crop top', '/services/crop-top.jpg'),
+  ('Corsé', '/services/corse.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Camisas, blusas y prendas superiores';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Vestido casual', '/services/vestido-casual.jpg'),
+  ('Vestido camisero', '/services/vestido-camisero.jpg'),
+  ('Vestido de seda', '/services/vestido-seda.jpg'),
+  ('Vestido de lino', '/services/vestido-lino.jpg'),
+  ('Vestido de punto/tejido', '/services/vestido-punto.jpg'),
+  ('Vestido de mezclilla', '/services/vestido-mezclilla.jpg'),
+  ('Vestido de noche', '/services/vestido-noche.jpg'),
+  ('Vestido con varias capas', '/services/vestido-capas.jpg'),
+  ('Vestido de seda de fiesta', '/services/vestido-seda-fiesta.jpg'),
+  ('Vestido tableado', '/services/vestido-tableado.jpg'),
+  ('Vestido con cola', '/services/vestido-cola.jpg'),
+  ('Vestido de novia', '/services/vestido-novia.jpg'),
+  ('Vestido de quinceañera', '/services/vestido-quinceanera.jpg'),
+  ('Vestido de primera comunión', '/services/vestido-comunion.jpg'),
+  ('Vestido de bautizo', '/services/vestido-bautizo.jpg'),
+  ('Vestido de presentación', '/services/vestido-presentacion.jpg'),
+  ('Velo de novia', '/services/velo-novia.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Vestidos';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Falda', '/services/falda.jpg'),
+  ('Falda plisada', '/services/falda-plisada.jpg'),
+  ('Falda de tablas', '/services/falda-tablas.jpg'),
+  ('Falda de mezclilla', '/services/falda-mezclilla.jpg'),
+  ('Falda de vestir', '/services/falda-vestir.jpg'),
+  ('Falda de piel', '/services/falda-piel.jpg'),
+  ('Falda bordada', '/services/falda-bordada.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Faldas';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Suéter/cardigan', '/services/sueter-cardigan.jpg'),
+  ('Poncho tejido', '/services/poncho-tejido.jpg'),
+  ('Chal tejido', '/services/chal-tejido.jpg'),
+  ('Chalina', '/services/chalina.jpg'),
+  ('Bufanda', '/services/bufanda.jpg'),
+  ('Pashmina', '/services/pashmina.jpg'),
+  ('Cuello tejido', '/services/cuello-tejido.jpg'),
+  ('Guantes', '/services/guantes.jpg'),
+  ('Gorro', '/services/gorro.jpg'),
+  ('Boina', '/services/boina.jpg'),
+  ('Pasamontañas', '/services/pasamontanas.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Suéteres y tejidos';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Corbata', '/services/corbata.jpg'),
+  ('Corbatín', '/services/corbatin.jpg'),
+  ('Pañuelo de bolsillo', '/services/panuelo-bolsillo.jpg'),
+  ('Pañuelo de vestir', '/services/panuelo-vestir.jpg'),
+  ('Fajín', '/services/fajin.jpg'),
+  ('Tirantes textiles', '/services/tirantes.jpg'),
+  ('Chaleco formal', '/services/chaleco-formal.jpg'),
+  ('Mascada', '/services/mascada.jpg'),
+  ('Pañuelo de seda', '/services/panuelo-seda.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Ropa de caballero y accesorios';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Vestido infantil', '/services/vestido-infantil.jpg'),
+  ('Vestido de fiesta infantil', '/services/vestido-fiesta-infantil.jpg'),
+  ('Traje infantil', '/services/traje-infantil.jpg'),
+  ('Saco infantil', '/services/saco-infantil.jpg'),
+  ('Pantalón infantil', '/services/pantalon-infantil.jpg'),
+  ('Camisa infantil', '/services/camisa-infantil.jpg'),
+  ('Blusa infantil', '/services/blusa-infantil.jpg'),
+  ('Suéter infantil', '/services/sueter-infantil.jpg'),
+  ('Chamarra infantil', '/services/chamarra-infantil.jpg'),
+  ('Abrigo infantil', '/services/abrigo-infantil.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Ropa infantil y de bebé';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Sábana de cajón', '/services/sabana-cajon.jpg'),
+  ('Sábana plana', '/services/sabana-plana.jpg'),
+  ('Funda de almohada', '/services/funda-almohada.jpg'),
+  ('Protector de colchón', '/services/protector-colchon.jpg'),
+  ('Cubrecolchón Sonagre', '/services/cubrecolchon-sonagre.jpg'),
+  ('Edredón', '/services/edredon.jpg'),
+  ('Edredón de plumas', '/services/edredon-plumas.jpg'),
+  ('Cobertor', '/services/cobertor.jpg'),
+  ('Colcha', '/services/colcha.jpg'),
+  ('Pie de cama', '/services/pie-de-cama.jpg'),
+  ('Manta', '/services/manta.jpg'),
+  ('Frazada', '/services/frazada.jpg'),
+  ('Almohada', '/services/almohada.jpg'),
+  ('Cojín tubular largo', '/services/cojin-tubular.jpg'),
+  ('Cojín decorativo con relleno', '/services/cojin-decorativo.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Ropa de cama';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Cortina ligera por metro', '/services/cortina-ligera.jpg'),
+  ('Cortina gruesa por metro', '/services/cortina-gruesa.jpg'),
+  ('Cortina blackout por metro', '/services/cortina-blackout.jpg'),
+  ('Cortina de lino por metro', '/services/cortina-lino.jpg'),
+  ('Cortina de terciopelo por metro', '/services/cortina-terciopelo.jpg'),
+  ('Cortina con forro por metro', '/services/cortina-forro.jpg'),
+  ('Visillo', '/services/visillo.jpg'),
+  ('Faldón de cama', '/services/faldon-cama.jpg'),
+  ('Mantel decorativo por metro', '/services/mantel.jpg'),
+  ('Camino de mesa', '/services/camino-mesa.jpg'),
+  ('Individuales de tela', '/services/individuales.jpg'),
+  ('Servilletas de tela', '/services/servilletas.jpg'),
+  ('Fundas de sillas completa', '/services/fundas-sillas.jpg'),
+  ('Fundas de cojines 30x30', '/services/fundas-cojines.jpg'),
+  ('Toalla grande de baño', '/services/toalla.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Cortinas y decoración textil';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Bata de laboratorio', '/services/bata-laboratorio.jpg'),
+  ('Bata médica', '/services/bata-medica.jpg'),
+  ('Filipina', '/services/filipina.jpg'),
+  ('Uniforme de enfermería', '/services/uniforme-enfermeria.jpg'),
+  ('Uniforme de cocina', '/services/uniforme-cocina.jpg'),
+  ('Mandil de cocina', '/services/mandil-cocina.jpg'),
+  ('Uniforme industrial', '/services/uniforme-industrial.jpg'),
+  ('Overol de trabajo', '/services/overol-trabajo.jpg'),
+  ('Uniforme de seguridad', '/services/uniforme-seguridad.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Uniformes y ropa de trabajo';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Disfraz infantil', '/services/disfraz-infantil.jpg'),
+  ('Disfraz adulto', '/services/disfraz-adulto.jpg'),
+  ('Vestuario teatral', '/services/vestuario-teatral.jpg'),
+  ('Vestuario de danza', '/services/vestuario-danza.jpg'),
+  ('Traje regional', '/services/traje-regional.jpg'),
+  ('Vestido típico', '/services/vestido-tipico.jpg'),
+  ('Traje de charro 2 piezas', '/services/traje-charro.jpg'),
+  ('Traje de mariachi', '/services/traje-mariachi.jpg'),
+  ('Toga de graduación', '/services/toga.jpg'),
+  ('Birrete', '/services/birrete.jpg'),
+  ('Bandera textil por metro', '/services/bandera.jpg'),
+  ('Banderín', '/services/banderin.jpg'),
+  ('Peluche pequeño', '/services/peluche-pequeno.jpg'),
+  ('Peluche mediano', '/services/peluche-mediano.jpg'),
+  ('Peluche grande', '/services/peluche-grande.jpg'),
+  ('Bolsa de tela', '/services/bolsa-tela.jpg'),
+  ('Mochila de tela', '/services/mochila-tela.jpg'),
+  ('Pañalera textil', '/services/panalera.jpg'),
+  ('Autoasiento de bebé', '/services/autoasiento.jpg'),
+  ('Tenis de tela', '/services/tenis-tela.jpg'),
+  ('Tenis de piel', '/services/tenis-piel.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Artículos especiales';
+
+update tintoreria_francia.services as s
+set image_path = v.image_path
+from (values
+  ('Lavado por kilogramo', '/services/lavado-kilo.jpg'),
+  ('Lavado de ropa blanca', '/services/lavado-blanca.jpg'),
+  ('Lavado de ropa de bebé', '/services/lavado-bebe.jpg'),
+  ('Kilo de lavado hipoalergénico', '/services/lavado-hipoalergenico.jpg')
+) as v(name, image_path)
+where s.name = v.name
+  and s.category = 'Servicios adicionales de lavandería';
 
 insert into tintoreria_francia.customers (id, name, phone, email) values
   ('00000000-0000-4000-8000-000000000001', 'Mariana López',   '5523148890', 'mariana.lopez@correo.mx'),
@@ -493,13 +965,17 @@ begin
   insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty)
   select l.folio, s.id, s.name, s.unit, s.price_cents, l.qty
     from (values
-      (1041, 's1', 5), (1041, 's3', 2),
-      (1040, 's16', 1),
-      (1039, 's8', 2), (1039, 's11', 3),
-      (1038, 's12', 1), (1038, 's15', 2),
-      (1037, 's7', 6),
-      (1036, 's6', 1), (1036, 's5', 2),
-      (1035, 's1', 8)
+      (1041, 's44', 5),
+      (1041, 's37', 2),
+      (1040, 's65', 1),
+      (1039, 's32', 2),
+      (1039, 's94', 3),
+      (1038, 's118', 1),
+      (1038, 's136', 2),
+      (1037, 's173', 6),
+      (1036, 's1', 1),
+      (1036, 's83', 2),
+      (1035, 's44', 8)
     ) as l (folio, service_id, qty)
     join tintoreria_francia.services s on s.id = l.service_id;
 
