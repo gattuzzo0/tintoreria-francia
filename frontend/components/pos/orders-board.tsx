@@ -6,6 +6,8 @@ import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyN
 import { Button } from "@/components/ui/button";
 import { getBranchInfo, readBranch } from "@/lib/branches";
 import { formatDeliveryShort } from "@/lib/delivery";
+import { fillingText } from "@/lib/fillings";
+import { lengthText } from "@/lib/lengths";
 import { ordersCacheKey, readOrdersCache, writeOrdersCache } from "@/lib/orders-board-cache";
 import { fetchOrder, fetchOrderPage } from "@/lib/pos-api";
 import { formatDate, formatDateTime, formatMoney, formatShortDate, PAYMENT_LABEL, STATUS_META, type Customer, type DeliveredOrder, type Order, type OrderStatus } from "@/lib/pos-data";
@@ -568,12 +570,14 @@ function OrderPage({
                         {isOpen && (
                           <ul id={live ? `order-lines-${o.folio}` : undefined} className="mt-2 flex flex-col gap-1 rounded-lg bg-muted/60 p-2.5 text-xs">
                             {o.lines.map((l) => (
-                              <li key={`${l.serviceId}:${l.color}`} className="flex items-baseline justify-between gap-3">
+                              <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}`} className="flex items-baseline justify-between gap-3">
                                 <span>
                                   <span className="font-mono">
                                     {l.qty} {l.unit}
                                   </span>{" "}
                                   · {l.name} <GarmentColorMark color={l.color} />
+                                  {l.fill ? <span className="text-muted-foreground"> · {fillingText(l.fill)}</span> : null}
+                                  {l.length ? <span className="text-muted-foreground"> · {lengthText(l.length)}</span> : null}
                                 </span>
                                 <span className="font-mono text-muted-foreground">{formatMoney(l.unitPriceCents * l.qty)}</span>
                               </li>

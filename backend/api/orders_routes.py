@@ -32,12 +32,14 @@ _DELIVERED_PLAIN = "folio, customer_id, payment_method, total_cents, status_upda
 GARMENT_COLORS = frozenset(
     {"rojo", "amarillo", "verde", "azul", "azul_claro", "morado", "rosa", "naranja", "cafe", "negro", "blanco"}
 )
+FILLINGS = frozenset({"medio", "abundante", "maxi"})
+LENGTHS = frozenset({"tres_cuartos", "mediapierna", "largo", "extra"})
 Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
     "folio, customer_id, express, delivery_date, payment_method, wants_invoice, status, notes, branch, created_at, status_updated_at, "
     "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
-    "order_lines(service_id, name, unit, unit_price_cents, qty, color), "
+    "order_lines(service_id, name, unit, unit_price_cents, qty, color, fill, length), "
     "order_notes(id, body, created_at)"
 )
 _SELECT = _SELECT_PLAIN + ", order_photos(id, created_at)"
@@ -49,12 +51,28 @@ class OrderLineIn(BaseModel):
     service_id: str = Field(alias="serviceId", min_length=1, max_length=20)
     qty: int = Field(ge=1, le=999)
     color: str = Field(default="", max_length=20)
+    fill: str = Field(default="", max_length=20)
+    length: str = Field(default="", max_length=20)
 
     @field_validator("color")
     @classmethod
     def color_ok(cls, v: str) -> str:
         if v and v not in GARMENT_COLORS:
             raise ValueError("Color inválido")
+        return v
+
+    @field_validator("fill")
+    @classmethod
+    def fill_ok(cls, v: str) -> str:
+        if v and v not in FILLINGS:
+            raise ValueError("Tipo de relleno inválido")
+        return v
+
+    @field_validator("length")
+    @classmethod
+    def length_ok(cls, v: str) -> str:
+        if v and v not in LENGTHS:
+            raise ValueError("Largo inválido")
         return v
 
 
@@ -97,8 +115,8 @@ class OrderCreate(BaseModel):
     @field_validator("lines")
     @classmethod
     def unique_services(cls, v: list[OrderLineIn]) -> list[OrderLineIn]:
-        if len({(line.service_id, line.color) for line in v}) != len(v):
-            raise ValueError("Cada servicio y color debe aparecer una sola vez")
+        if len({(line.service_id, line.color, line.fill, line.length) for line in v}) != len(v):
+            raise ValueError("Cada servicio, color, relleno y largo debe aparecer una sola vez")
         return v
 
 
@@ -148,6 +166,8 @@ class OrderLineOut(BaseModel):
     unitPriceCents: int
     qty: int
     color: str = ""
+    fill: str = ""
+    length: str = ""
 
 
 class DeliveredOut(BaseModel):
@@ -294,6 +314,8 @@ def _row_to_order_out(row: dict) -> OrderOut:
                 unitPriceCents=int(line["unit_price_cents"]),
                 qty=int(line["qty"]),
                 color=str(line.get("color") or ""),
+                fill=str(line.get("fill") or ""),
+                length=str(line.get("length") or ""),
             )
             for line in row.get("order_lines") or []
         ],
@@ -759,7 +781,16 @@ async def create_order(
         "p_express": body.express,
         "p_payment_method": body.payment,
         "p_notes": body.notes,
-        "p_lines": [{"serviceId": line.service_id, "qty": line.qty, "color": line.color} for line in body.lines],
+        "p_lines": [
+            {
+                "serviceId": line.service_id,
+                "qty": line.qty,
+                "color": line.color,
+                "fill": line.fill,
+                "length": line.length,
+            }
+            for line in body.lines
+        ],
         "p_delivery_date": body.delivery_date.isoformat(),
         "p_branch": body.branch,
         "p_idempotency_key": idempotency_key,

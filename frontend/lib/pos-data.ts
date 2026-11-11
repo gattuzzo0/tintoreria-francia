@@ -14,6 +14,7 @@ export const CATEGORIES = [
   "Uniformes y ropa de trabajo",
   "Artículos especiales",
   "Servicios adicionales de lavandería",
+  "Desmanchado y otros servicios",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
@@ -60,6 +61,10 @@ export type OrderLine = {
   qty: number;
   /** Vacío en órdenes anteriores al color. */
   color: string;
+  /** Vacío si la prenda no lleva relleno. medio, abundante o maxi. */
+  fill: string;
+  /** Vacío si la prenda no lleva largo. tres_cuartos, mediapierna, largo o extra. */
+  length: string;
 };
 
 export type OrderNote = { id: number; body: string; createdAt: string };

@@ -33,11 +33,12 @@ def _rows(text: str, pattern: re.Pattern[str]) -> list[tuple[str, str, str, int,
 class CatalogSeedTest(unittest.TestCase):
     def test_catalog_copies_match(self) -> None:
         migration = (ROOT / "backend/migrations/000017_catalog.sql").read_text(encoding="utf-8")
+        extra = (ROOT / "backend/migrations/000021_desmanchado.sql").read_text(encoding="utf-8")
         schema = (ROOT / "backend/supabase_schema.sql").read_text(encoding="utf-8")
         routes = (ROOT / "backend/api/catalog_routes.py").read_text(encoding="utf-8")
         web = (ROOT / "frontend/lib/pos-data.ts").read_text(encoding="utf-8")
 
-        rows = _rows(migration, ROW)
+        rows = _rows(migration, ROW) + _rows(extra, ROW)
         seed = _rows(schema, SEED)
         py = _quotes(routes, "Category = Literal[", "]")
         ts = _quotes(web, "export const CATEGORIES = [", "] as const")
@@ -48,9 +49,9 @@ class CatalogSeedTest(unittest.TestCase):
 
         self.assertEqual(py, ts)
         self.assertEqual(py, schema_cats)
-        self.assertEqual(len(rows), 176)
-        self.assertEqual([r[4] for r in rows], list(range(1, 177)))
-        self.assertEqual(len({r[0] for r in rows}), 176)
+        self.assertEqual(len(rows), 183)
+        self.assertEqual([r[4] for r in rows], list(range(1, 184)))
+        self.assertEqual(len({r[0] for r in rows}), 183)
         for name, cat, _unit, cents, _sort in rows:
             self.assertLessEqual(len(name), 60)
             self.assertIn(cat, py)

@@ -50,7 +50,8 @@ create table if not exists tintoreria_francia.services (
     'Cortinas y decoración textil',
     'Uniformes y ropa de trabajo',
     'Artículos especiales',
-    'Servicios adicionales de lavandería'
+    'Servicios adicionales de lavandería',
+    'Desmanchado y otros servicios'
   )),
   unit text not null check (unit in ('pza', 'kg', 'par', 'm')),
   price_cents integer not null check (price_cents between 1 and 10000000),
@@ -148,7 +149,9 @@ create table if not exists tintoreria_francia.order_lines (
   unit_price_cents integer not null check (unit_price_cents > 0),
   qty integer not null check (qty between 1 and 999),
   color text not null default '' check (color in ('', 'rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco')),
-  unique (order_folio, service_id, color)
+  fill text not null default '' check (fill in ('', 'medio', 'abundante', 'maxi')),
+  length text not null default '' check (length in ('', 'tres_cuartos', 'mediapierna', 'largo', 'extra')),
+  unique (order_folio, service_id, color, fill, length)
 );
 
 -- Historial de estados (para medir tiempos de proceso). Lo llena el trigger
@@ -308,7 +311,10 @@ $$;
 -- ---------------------------------------------------------------------
 -- create_order: crea orden + líneas en una transacción. Los precios se
 -- resuelven del catálogo (nunca del cliente). Idempotente por p_idempotency_key.
--- p_lines: [{"serviceId": "s1", "qty": 2}, ...]
+-- p_lines: [{"serviceId": "s1", "qty": 2, "color": "negro", "fill": "", "length": ""}, ...]
+-- fill si el nombre contiene "relleno": medio +30%, abundante +60%, maxi +85%.
+-- length si el nombre contiene "largo": tres_cuartos +25%, mediapierna +50%, largo +60%, extra +70%.
+-- Los porcentajes se suman sobre el precio de catálogo.
 -- p_delivery_date (día local CDMX): regular +5…+15; exprés hoy, mañana o +2. Domingo → lunes.
 -- ---------------------------------------------------------------------
 drop function if exists tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, text);
@@ -337,6 +343,10 @@ declare
   v_service tintoreria_francia.services%rowtype;
   v_qty integer;
   v_color text;
+  v_fill text;
+  v_length text;
+  v_extra integer;
+  v_price integer;
   v_pct integer;
   v_same_pct integer;
   v_next_pct integer;
@@ -408,8 +418,34 @@ begin
       raise exception 'Color inválido' using errcode = '22023';
     end if;
 
-    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color)
-    values (v_folio, v_service.id, v_service.name, v_service.unit, v_service.price_cents, v_qty, v_color);
+    v_fill := coalesce(v_line ->> 'fill', '');
+    v_length := coalesce(v_line ->> 'length', '');
+    v_extra := 0;
+    if position('relleno' in lower(v_service.name)) > 0 then
+      if v_fill not in ('medio', 'abundante', 'maxi') then
+        raise exception 'Elige el tipo de relleno' using errcode = '22023';
+      end if;
+      v_extra := v_extra + case v_fill when 'medio' then 30 when 'abundante' then 60 else 85 end;
+    elsif v_fill <> '' then
+      raise exception 'Este servicio no lleva relleno' using errcode = '22023';
+    end if;
+    if position('largo' in lower(v_service.name)) > 0 then
+      if v_length not in ('tres_cuartos', 'mediapierna', 'largo', 'extra') then
+        raise exception 'Elige el largo' using errcode = '22023';
+      end if;
+      v_extra := v_extra + case v_length
+        when 'tres_cuartos' then 25
+        when 'mediapierna' then 50
+        when 'largo' then 60
+        else 70
+      end;
+    elsif v_length <> '' then
+      raise exception 'Este servicio no lleva largo' using errcode = '22023';
+    end if;
+    v_price := round(v_service.price_cents * (100 + v_extra) / 100.0)::integer;
+
+    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color, fill, length)
+    values (v_folio, v_service.id, v_service.name, v_service.unit, v_price, v_qty, v_color, v_fill, v_length);
   end loop;
 
   select extra_same_pct, extra_next_pct, urgent_pct
@@ -638,7 +674,14 @@ insert into tintoreria_francia.services (id, name, category, unit, price_cents, 
   ('s173', 'Lavado por kilogramo', 'Servicios adicionales de lavandería', 'kg', 3500, 173),
   ('s174', 'Lavado de ropa blanca', 'Servicios adicionales de lavandería', 'kg', 4500, 174),
   ('s175', 'Lavado de ropa de bebé', 'Servicios adicionales de lavandería', 'kg', 5500, 175),
-  ('s176', 'Kilo de lavado hipoalergénico', 'Servicios adicionales de lavandería', 'kg', 8000, 176)
+  ('s176', 'Kilo de lavado hipoalergénico', 'Servicios adicionales de lavandería', 'kg', 8000, 176),
+  ('s177', 'Tratamiento de olores', 'Desmanchado y otros servicios', 'pza', 6000, 177),
+  ('s178', 'Desmanchado especial', 'Desmanchado y otros servicios', 'pza', 7000, 178),
+  ('s179', 'Tratamiento de manchas amarillas', 'Desmanchado y otros servicios', 'pza', 5000, 179),
+  ('s180', 'Servicio de teñido', 'Desmanchado y otros servicios', 'pza', 25000, 180),
+  ('s181', 'Bastillas', 'Desmanchado y otros servicios', 'pza', 30000, 181),
+  ('s182', 'Cierre de pantalón', 'Desmanchado y otros servicios', 'pza', 30000, 182),
+  ('s183', 'Arreglos básicos', 'Desmanchado y otros servicios', 'pza', 20000, 183)
 on conflict (id) do nothing;
 
 select setval(

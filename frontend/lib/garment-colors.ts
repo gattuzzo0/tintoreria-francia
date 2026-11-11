@@ -1,3 +1,6 @@
+import { fillingOf } from "@/lib/fillings";
+import { lengthOf } from "@/lib/lengths";
+
 export type GarmentColor = { id: string; label: string; hex: string };
 
 /** Orden del selector: 4 columnas, igual a la cuadrícula. */
@@ -24,17 +27,18 @@ export function garmentColor(id: string): GarmentColor | null {
 /** ponytail: tab no sale en ids de servicio. */
 const SEP = "\t";
 
-export function lineKey(serviceId: string, color: string): string {
-  return `${serviceId}${SEP}${color}`;
+export function lineKey(serviceId: string, color: string, fill = "", length = ""): string {
+  return `${serviceId}${SEP}${color}${SEP}${fill}${SEP}${length}`;
 }
 
-export function parseLineKey(key: string): { serviceId: string; color: string } | null {
-  const i = key.indexOf(SEP);
-  if (i <= 0) return null;
-  const serviceId = key.slice(0, i);
-  const color = key.slice(i + 1);
-  if (!serviceId || (color !== "" && !garmentColor(color))) return null;
-  return { serviceId, color };
+export function parseLineKey(key: string): { serviceId: string; color: string; fill: string; length: string } | null {
+  const parts = key.split(SEP);
+  if (parts.length !== 4) return null;
+  const [serviceId, color, fill, length] = parts;
+  if (!serviceId || (color !== "" && !garmentColor(color)) || (fill !== "" && !fillingOf(fill)) || (length !== "" && !lengthOf(length))) {
+    return null;
+  }
+  return { serviceId, color, fill, length };
 }
 
 export function qtyForService(quantities: Record<string, number>, serviceId: string): number {
@@ -46,9 +50,13 @@ export function qtyForService(quantities: Record<string, number>, serviceId: str
 
 {
   const parsed = parseLineKey(lineKey("s1", "rojo"));
-  if (!parsed || parsed.serviceId !== "s1" || parsed.color !== "rojo") throw new Error("lineKey");
-  if (parseLineKey("s1") !== null) throw new Error("parseLineKey");
+  if (!parsed || parsed.serviceId !== "s1" || parsed.color !== "rojo" || parsed.fill !== "" || parsed.length !== "") throw new Error("lineKey");
+  if (parseLineKey("s1") !== null || parseLineKey("s1\trojo") !== null) throw new Error("parseLineKey");
+  const filled = parseLineKey(lineKey("s19", "negro", "medio"));
+  if (!filled || filled.fill !== "medio" || filled.length !== "") throw new Error("fill key");
+  const long = parseLineKey(lineKey("s126", "blanco", "", "extra"));
+  if (!long || long.length !== "extra") throw new Error("length key");
   if (!garmentColor("rosa") || !garmentColor("azul_claro")) throw new Error("garmentColor");
   const kilo = parseLineKey(lineKey("s7", ""));
-  if (!kilo || kilo.color !== "") throw new Error("kilo");
+  if (!kilo || kilo.color !== "" || kilo.fill !== "" || kilo.length !== "") throw new Error("kilo");
 }
