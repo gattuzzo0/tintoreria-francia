@@ -22,7 +22,7 @@ export type CreateOrderBody = {
   notes: string;
   photoId?: string;
   wantsInvoice?: boolean;
-  lines: { serviceId: string; qty: number; color: string }[];
+  lines: { serviceId: string; qty: number; color: string; fill: string; length: string }[];
 };
 
 export type ServiceInput = { name: string; category: Category; unit: Unit; priceCents: number };

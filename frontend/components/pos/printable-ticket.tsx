@@ -1,4 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
+import { fillingText } from "@/lib/fillings";
+import { lengthText } from "@/lib/lengths";
 import { garmentColor } from "@/lib/garment-colors";
 import { getBranchInfo } from "@/lib/branches";
 import { formatDeliveryLong } from "@/lib/delivery";
@@ -73,11 +75,13 @@ export function PrintableTicket({ order, customer }: { order: Order; customer?: 
         {order.lines.map((l) => {
           const color = garmentColor(l.color);
           return (
-          <li key={`${l.serviceId}:${l.color}`}>
+          <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}`}>
             <div className="flex justify-between gap-3">
               <span>
                 {l.qty} {l.unit} · {l.name}
                 {color ? ` · ${color.label}` : ""}
+                {l.fill ? ` · ${fillingText(l.fill)}` : ""}
+                {l.length ? ` · ${lengthText(l.length)}` : ""}
               </span>
               <span>{formatMoney(l.unitPriceCents * l.qty)}</span>
             </div>

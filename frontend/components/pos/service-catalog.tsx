@@ -3,11 +3,14 @@
 import { useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronRight, Menu, Plus, RotateCcw } from "lucide-react";
+import { FILLINGS, linePrice, needsFilling } from "@/lib/fillings";
 import { qtyForService } from "@/lib/garment-colors";
+import { LENGTHS, needsLength } from "@/lib/lengths";
 import { CATEGORIES, categoriesForMenu, formatMoney } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 import { CategoryDrawer } from "./category-drawer";
 import { ColorRevolver } from "./color-revolver";
+import { ExtraDialog } from "./fill-dialog";
 import { CustomerLookup } from "./customer-lookup";
 import { usePos } from "./pos-provider";
 
@@ -24,8 +27,16 @@ export function ServiceCatalog({
   const tab = tabs.includes(picked) ? picked : (tabs[0] ?? CATEGORIES[0]);
   const [menu, setMenu] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const [picking, setPicking] = useState<{ id: string; name: string } | null>(null);
+  const [picking, setPicking] = useState<{ id: string; name: string; priceCents: number } | null>(null);
+  const [filling, setFilling] = useState<{ id: string; name: string; priceCents: number; color: string } | null>(null);
+  const [lengthening, setLengthening] = useState<{ id: string; name: string; priceCents: number; color: string; fill: string } | null>(null);
   const locked = !draft.customerId;
+
+  const begin = (piece: { id: string; name: string; priceCents: number; color: string }) => {
+    if (needsFilling(piece.name)) setFilling(piece);
+    else if (needsLength(piece.name)) setLengthening({ ...piece, fill: "" });
+    else addItem(piece.id, piece.color, "", "");
+  };
   const services = all.filter((s) => s.category === tab);
 
   return (
@@ -89,8 +100,8 @@ export function ServiceCatalog({
                 type="button"
                 disabled={locked}
                 onClick={() => {
-                  if (s.unit === "kg") addItem(s.id, "");
-                  else setPicking({ id: s.id, name: s.name });
+                  if (s.unit === "kg") begin({ id: s.id, name: s.name, priceCents: s.priceCents, color: "" });
+                  else setPicking({ id: s.id, name: s.name, priceCents: s.priceCents });
                 }}
                 className={cn(
                   "group relative isolate flex min-h-32 w-full flex-col justify-between gap-6 overflow-hidden rounded-xl border bg-card p-4 text-left transition-all duration-200 outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
@@ -153,9 +164,35 @@ export function ServiceCatalog({
         open={picking !== null}
         garment={picking?.name ?? ""}
         onSelect={(color) => {
-          if (picking) addItem(picking.id, color);
+          if (picking) begin({ ...picking, color });
         }}
         onClose={() => setPicking(null)}
+      />
+      <ExtraDialog
+        open={filling !== null}
+        title="Tipo de relleno"
+        labelledBy="fill-dialog-title"
+        garment={filling?.name ?? ""}
+        options={FILLINGS}
+        priceFor={(id) => linePrice(filling?.priceCents ?? 0, id)}
+        onSelect={(fill) => {
+          if (!filling) return;
+          if (needsLength(filling.name)) setLengthening({ ...filling, fill });
+          else addItem(filling.id, filling.color, fill, "");
+        }}
+        onClose={() => setFilling(null)}
+      />
+      <ExtraDialog
+        open={lengthening !== null}
+        title="Largo"
+        labelledBy="length-dialog-title"
+        garment={lengthening?.name ?? ""}
+        options={LENGTHS}
+        priceFor={(id) => linePrice(lengthening?.priceCents ?? 0, lengthening?.fill ?? "", id)}
+        onSelect={(length) => {
+          if (lengthening) addItem(lengthening.id, lengthening.color, lengthening.fill, length);
+        }}
+        onClose={() => setLengthening(null)}
       />
     </section>
   );

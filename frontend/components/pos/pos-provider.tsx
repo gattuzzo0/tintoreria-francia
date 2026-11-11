@@ -6,6 +6,7 @@ import { ApiHttpError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
 import { DEFAULT_RUSH_RATES, rushPct, type RushRates } from "@/lib/delivery";
+import { linePrice } from "@/lib/fillings";
 import { lineKey, parseLineKey } from "@/lib/garment-colors";
 import { clearOrdersCache } from "@/lib/orders-board-cache";
 import { clearReportsCache } from "@/lib/reports-cache";
@@ -70,8 +71,8 @@ type PosContextValue = {
   rushRates: RushRates;
   summary: OrderSummary;
   customers: Customer[];
-  addItem: (id: string, color: string) => void;
-  setQty: (id: string, color: string, qty: number) => void;
+  addItem: (id: string, color: string, fill?: string, length?: string) => void;
+  setQty: (id: string, color: string, fill: string, length: string, qty: number) => void;
   clearService: (id: string) => void;
   updateDraft: (patch: Partial<Draft>) => void;
   clearDraft: () => void;
@@ -189,9 +190,11 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
         serviceId: service.id,
         name: service.name,
         unit: service.unit,
-        unitPriceCents: service.priceCents,
+        unitPriceCents: linePrice(service.priceCents, parsed.fill, parsed.length),
         qty,
         color: parsed.color,
+        fill: parsed.fill,
+        length: parsed.length,
       });
     }
     return lines;
@@ -201,8 +204,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     [draftLines, draft.express, draft.deliveryDate, rushRates],
   );
 
-  const setQty = useCallback((id: string, color: string, qty: number) => {
-    const key = lineKey(id, color);
+  const setQty = useCallback((id: string, color: string, fill: string, length: string, qty: number) => {
+    const key = lineKey(id, color, fill, length);
     setDraft((d) => {
       const quantities = { ...d.quantities };
       if (qty <= 0) delete quantities[key];
@@ -220,8 +223,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addItem = useCallback((id: string, color: string) => {
-    const key = lineKey(id, color);
+  const addItem = useCallback((id: string, color: string, fill = "", length = "") => {
+    const key = lineKey(id, color, fill, length);
     setDraft((d) => ({
       ...d,
       quantities: { ...d.quantities, [key]: Math.min(999, (d.quantities[key] ?? 0) + 1) },
@@ -248,7 +251,13 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       notes: sanitizeText(draft.notes, NOTES_MAX).trim(),
       wantsInvoice: wantsInvoice && draft.payment !== "pendiente",
       ...(draft.photoId ? { photoId: draft.photoId } : {}),
-      lines: draftLines.map((l) => ({ serviceId: l.serviceId, qty: l.qty, color: l.color })),
+      lines: draftLines.map((l) => ({
+        serviceId: l.serviceId,
+        qty: l.qty,
+        color: l.color,
+        fill: l.fill,
+        length: l.length,
+      })),
     };
     const key = idempotencyKey.current;
     const order = await withAuth((t) => createOrder(t, body, key));

@@ -32,6 +32,7 @@ Category = Literal[
     "Uniformes y ropa de trabajo",
     "Artículos especiales",
     "Servicios adicionales de lavandería",
+    "Desmanchado y otros servicios",
 ]
 Unit = Literal["pza", "kg", "par", "m"]
 _SELECT = "id, name, category, unit, price_cents, image_path, active, sort_order"
