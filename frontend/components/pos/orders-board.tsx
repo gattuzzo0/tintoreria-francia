@@ -444,9 +444,18 @@ function OrderPage({
   detailsOnly?: boolean;
 }) {
   const [shareError, setShareError] = useState<{ folio: number; message: string } | null>(null);
+  const [confirmStart, setConfirmStart] = useState<Order | null>(null);
   const list = orders.filter((o) => o.status === status);
+  const requestAdvance = (order: Order, next: OrderStatus) => {
+    if (order.status === "recibido" && next === "proceso" && hasOrderNote(order)) {
+      setConfirmStart(order);
+      return;
+    }
+    onAdvance(order.folio, next);
+  };
   if (list.length === 0) return <EmptyOrders query={query} />;
   return (
+    <>
     <ul className={cn("grid items-start gap-3", !detailsOnly && "md:grid-cols-2 xl:grid-cols-3")}>
       {list.map((o) => {
         const meta = STATUS_META[o.status];
@@ -460,31 +469,78 @@ function OrderPage({
             key={o.folio}
             onClick={detailsOnly ? undefined : () => onToggle(o.folio)}
             className={cn(
-              !detailsOnly && "cursor-pointer rounded-xl border p-3.5 transition-colors hover:border-primary/40",
+              !detailsOnly && "cursor-pointer rounded-xl border p-3 transition-colors hover:border-primary/40",
               !detailsOnly && (receivedBg ?? (o.status === "entregado" ? "border-dashed bg-muted/40" : "bg-card")),
               !detailsOnly && isOpen && "border-primary/40",
               detailsOnly && "border-t bg-muted/30 px-4 py-3",
             )}
           >
-                        <div className="flex items-center gap-2">
-                          {!detailsOnly && <span className="font-mono text-sm font-medium">#{o.folio}</span>}
-                          {!detailsOnly && (
-                            <span className="min-w-0 truncate text-sm font-medium">{customer?.name ?? "—"}</span>
-                          )}
-                          {detailsOnly && (
-                            <span className="shrink-0 font-mono text-xs text-foreground">
-                              Tel. {customer?.phone || "sin registrar"}
-                            </span>
-                          )}
-                          {o.express && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">
-                              <Zap className="size-3" aria-hidden /> Exprés
-                            </span>
-                          )}
-                          {!detailsOnly && o.wantsInvoice && <InvoiceMark />}
-                          {!detailsOnly && o.refund && <RefundMark />}
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                              {!detailsOnly && <span className="font-mono text-sm font-medium">#{o.folio}</span>}
+                              {!detailsOnly && (
+                                <span className="min-w-0 truncate text-sm font-medium">{customer?.name ?? "—"}</span>
+                              )}
+                              {detailsOnly && (
+                                <span className="shrink-0 font-mono text-xs text-foreground">
+                                  Tel. {customer?.phone || "sin registrar"}
+                                </span>
+                              )}
+                              {o.express && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">
+                                  <Zap className="size-3" aria-hidden /> Exprés
+                                </span>
+                              )}
+                              {!detailsOnly && o.wantsInvoice && <InvoiceMark />}
+                              {!detailsOnly && o.refund && <RefundMark />}
+                            </div>
+                            {!detailsOnly && (
+                              <div className="mt-0.5 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  aria-expanded={isOpen}
+                                  aria-controls={live ? `order-lines-${o.folio}` : undefined}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggle(o.folio);
+                                  }}
+                                  className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                                >
+                                  <span className="block truncate text-xs leading-none text-muted-foreground">
+                                    {pieces} {pieces === 1 ? "prenda" : "prendas"}
+                                  </span>
+                                </button>
+                                {o.status === "listo" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNotes(o.folio);
+                                    }}
+                                  >
+                                    <StickyNote aria-hidden /> Notas
+                                  </Button>
+                                )}
+                                <button
+                                  type="button"
+                                  aria-expanded={isOpen}
+                                  aria-label={isOpen ? `Cerrar orden ${o.folio}` : `Abrir orden ${o.folio}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onToggle(o.folio);
+                                  }}
+                                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
+                                >
+                                  <ChevronDown className={cn("size-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                           {(o.notes || o.photoId || (o.photoIds?.length ?? 0) > 0 || o.staffNotes.length > 0) && (
-                            <span className="inline-flex shrink-0 items-center gap-1">
+                            <span className="inline-flex shrink-0 items-center gap-1 self-center">
                               <button
                                 type="button"
                                 aria-label={`Ver notas de la orden ${o.folio}`}
@@ -493,9 +549,9 @@ function OrderPage({
                                   e.stopPropagation();
                                   onNotes(o.folio);
                                 }}
-                                className="inline-flex size-8 items-center justify-center rounded-full bg-warning text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 md:size-6"
+                                className="inline-flex size-[50px] items-center justify-center rounded-full bg-warning text-warning-foreground outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30"
                               >
-                                <CircleAlert className="size-4" aria-hidden />
+                                <CircleAlert className="size-6" aria-hidden />
                               </button>
                               {!detailsOnly && (
                                 <NoteWhatsApp
@@ -508,7 +564,7 @@ function OrderPage({
                           )}
                           <span
                             title={detailsOnly ? undefined : `Recibida ${formatDate(o.createdAt)}`}
-                            className="ml-auto text-right font-mono text-[11px] text-muted-foreground"
+                            className="shrink-0 self-start text-right font-mono text-[11px] text-muted-foreground"
                           >
                             {detailsOnly ? (
                               <>
@@ -524,49 +580,6 @@ function OrderPage({
                             )}
                           </span>
                         </div>
-                        {!detailsOnly && (
-                        <div className="mt-2 flex items-end gap-2">
-                          <button
-                            type="button"
-                            aria-expanded={isOpen}
-                            aria-controls={live ? `order-lines-${o.folio}` : undefined}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggle(o.folio);
-                            }}
-                            className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
-                          >
-                            <span className="block truncate text-xs text-muted-foreground">
-                              {pieces} {pieces === 1 ? "prenda" : "prendas"}
-                            </span>
-                          </button>
-                          {o.status === "listo" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="shrink-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNotes(o.folio);
-                              }}
-                            >
-                              <StickyNote aria-hidden /> Notas
-                            </Button>
-                          )}
-                          <button
-                            type="button"
-                            aria-expanded={isOpen}
-                            aria-label={isOpen ? `Cerrar orden ${o.folio}` : `Abrir orden ${o.folio}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggle(o.folio);
-                            }}
-                            className="mb-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/30"
-                          >
-                            <ChevronDown className={cn("size-3.5 transition-transform", isOpen && "rotate-180")} aria-hidden />
-                          </button>
-                        </div>
-                        )}
                         {isOpen && (
                           <ul id={live ? `order-lines-${o.folio}` : undefined} className="mt-2 flex flex-col gap-1 rounded-lg bg-muted/60 p-2.5 text-xs">
                             {o.lines.map((l) => (
@@ -593,7 +606,7 @@ function OrderPage({
                           </div>
                         )}
                         {!detailsOnly && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+                        <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2">
                           {!detailsOnly && <span className="font-mono text-sm">{formatMoney(o.totalCents)}</span>}
                           {!detailsOnly && (
                             <span
@@ -685,7 +698,7 @@ function OrderPage({
                               disabled={pending === o.folio}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onAdvance(o.folio, meta.next!);
+                                requestAdvance(o, meta.next!);
                               }}
                             >
                               {meta.action} <ArrowRight aria-hidden />
@@ -702,6 +715,74 @@ function OrderPage({
         );
       })}
     </ul>
+    <ClientNoteConfirmDialog
+      open={confirmStart !== null}
+      folio={confirmStart?.folio ?? 0}
+      onConfirm={() => {
+        const order = confirmStart;
+        setConfirmStart(null);
+        if (order) onAdvance(order.folio, "proceso");
+      }}
+      onClose={() => setConfirmStart(null)}
+    />
+    </>
+  );
+}
+
+function ClientNoteConfirmDialog({
+  open,
+  folio,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  folio: number;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current?.close()}
+      aria-labelledby="client-note-confirm-title"
+      className="m-auto w-[calc(100%-2rem)] max-w-sm bg-transparent p-0 backdrop:bg-foreground/50 backdrop:backdrop-blur-sm"
+    >
+      {open && (
+        <div className="rounded-2xl bg-background p-5 shadow-2xl">
+          <div className="mb-4 flex items-start gap-3">
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-warning text-warning-foreground">
+              <CircleAlert className="size-4" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 id="client-note-confirm-title" className="font-semibold tracking-tight">
+                ¿Ya confirmó el cliente?
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                La orden #{folio} tiene notas. Solo inicia si el cliente aceptó continuar.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={onConfirm}>
+              Sí
+            </Button>
+          </div>
+        </div>
+      )}
+    </dialog>
   );
 }
 
@@ -835,8 +916,11 @@ function NoteWhatsApp({
   const [busy, setBusy] = useState(false);
   // ponytail: clipboard holds one image. First photo is recepción. Add a picker if several must go.
   const photoId = order.photoIds?.[0] ?? order.photoId ?? null;
-  const comments = [order.notes, ...order.staffNotes.map((n) => n.body)];
-  if (!photoId && !comments.some((c) => c.trim())) return null;
+  const detail = [order.notes, ...order.staffNotes.map((n) => n.body)]
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .join("; ");
+  if (!photoId && !detail) return null;
   const phone = customer?.phone ?? "";
 
   return (
@@ -849,7 +933,7 @@ function NoteWhatsApp({
         e.stopPropagation();
         if (!phone || !customer) return;
         onError(null);
-        const href = whatsappSendUrl(phone, noteMessage(customer.name, order.folio, order.notes));
+        const href = whatsappSendUrl(phone, noteMessage(customer.name, order.folio, detail));
         const open = () => {
           window.location.href = href;
         };
@@ -877,7 +961,7 @@ function NoteWhatsApp({
         }
         void write.then(open, fail).finally(() => setBusy(false));
       }}
-      className="inline-flex size-8 shrink-0 items-center justify-center p-0 outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40 md:size-6"
+      className="inline-flex size-[50px] shrink-0 items-center justify-center p-0 outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-40"
     >
       <WhatsAppMark className="size-full" />
     </button>
@@ -887,7 +971,7 @@ function NoteWhatsApp({
 function WhatsAppMark({ className = "size-5" }: { className?: string }) {
   return (
     <span className={cn("relative block", className)}>
-      <Image src="/whatsapp.png" alt="" fill sizes="32px" />
+      <Image src="/whatsapp.png" alt="" fill sizes="50px" />
     </span>
   );
 }

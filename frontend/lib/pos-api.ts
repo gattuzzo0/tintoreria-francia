@@ -231,6 +231,12 @@ export const advanceOrderStatus = (
 export const addOrderNote = (token: string, folio: number, body: string) =>
   apiFetch<Order>(`/api/orders/${folio}/notes`, token, { method: "POST", body: { body } });
 
+export const deleteOrderNote = (token: string, folio: number, noteId: number) =>
+  apiFetch<Order>(`/api/orders/${folio}/notes/${noteId}`, token, { method: "DELETE" });
+
+export const clearIntakeNotes = (token: string, folio: number) =>
+  apiFetch<Order>(`/api/orders/${folio}/notes/intake`, token, { method: "DELETE" });
+
 async function putSigned(url: string, body: Blob, contentType: string): Promise<void> {
   let res: Response;
   try {

@@ -353,7 +353,7 @@
 }
 
 @page {
-  size: 80mm auto;
+  size: 58mm auto;
   margin: 0;
 }
 
@@ -393,29 +393,71 @@
 }
 
 @media print {
-  body * {
-    visibility: hidden !important;
+  /* El ticket se clona a #print-ticket-root en body (ver receipt-dialog).
+     Así no hay position:fixed ni layout del diálogo creando una 2ª página. */
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
   }
-  dialog::backdrop {
-    background: transparent !important;
+  html.printing-ticket body > *:not(#print-ticket-root) {
+    display: none !important;
   }
-  #print-ticket,
-  #print-ticket * {
-    visibility: visible !important;
+  #print-ticket-root {
+    display: block !important;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    overflow: hidden !important;
   }
-  #print-ticket {
-    position: fixed !important;
-    inset: 0 auto auto 0 !important;
+  html[data-ticket-mm="80"] #print-ticket-root {
     width: 80mm !important;
     max-width: 80mm !important;
+  }
+  /* Contenido < papel: ASCII 9×17 ≈ 48 mm útiles en 58, 72 en 80. */
+  #print-ticket-root #print-ticket {
+    box-sizing: border-box !important;
+    width: 48mm !important;
+    max-width: 48mm !important;
+    padding: 1mm 0 3mm 0 !important;
+    margin: 0 !important;
     box-shadow: none !important;
     border-radius: 0 !important;
     background: #fff !important;
     color: #000 !important;
+    overflow: hidden !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0 !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
   }
-  #print-ticket * {
+  html[data-ticket-mm="80"] #print-ticket-root #print-ticket {
+    width: 72mm !important;
+    max-width: 72mm !important;
+    padding: 2mm 0 4mm 0 !important;
+    font-size: 10px !important;
+  }
+  #print-ticket-root #print-ticket * {
     color: #000 !important;
     border-color: #000 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #print-ticket-root #print-ticket img {
+    max-width: 28mm !important;
+    height: auto !important;
+  }
+  #print-ticket-root #print-ticket svg {
+    max-width: 22mm !important;
+    height: auto !important;
+  }
+  html[data-ticket-mm="80"] #print-ticket-root #print-ticket svg {
+    max-width: 30mm !important;
   }
   .ticket-edge {
     display: none !important;

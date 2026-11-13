@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, CircleAlert, Loader2, X } from "lucide-react";
+import { Camera, CircleAlert, Loader2, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate, type Order } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
@@ -20,11 +20,16 @@ export function OrderNotesDialog({
   onUpdated?: (order: Order) => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const { addNote, addOrderPhoto, getCustomer } = usePos();
+  const { addNote, removeNote, clearIntakeNote, addOrderPhoto, getCustomer } = usePos();
   const photoInput = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{
+    preview: string;
+    run: () => Promise<Order>;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +38,8 @@ export function OrderNotesDialog({
     if (order && !dialog.open) dialog.showModal();
     if (!order && dialog.open) dialog.close();
   }, [order]);
+
+  const confirmPending = order ? pendingDelete : null;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +58,20 @@ export function OrderNotesDialog({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!order || !pendingDelete || deleting) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      onUpdated?.(await pendingDelete.run());
+      setPendingDelete(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo borrar la nota.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <dialog
       ref={ref}
@@ -58,14 +79,15 @@ export function OrderNotesDialog({
         setText("");
         setError(null);
         setPhotoBusy(false);
+        setPendingDelete(null);
         onClose();
       }}
-      onClick={(e) => e.target === ref.current && ref.current?.close()}
+      onClick={(e) => e.target === ref.current && !deleting && ref.current?.close()}
       aria-labelledby="notes-title"
       className="m-auto w-[calc(100%-2rem)] max-w-md bg-transparent p-0 backdrop:bg-foreground/50 backdrop:backdrop-blur-sm"
     >
       {order && (
-        <div className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl bg-background shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="relative flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl bg-background shadow-2xl animate-in fade-in zoom-in-95">
           <div className="flex items-start gap-3 border-b px-5 py-4">
             <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-warning text-warning-foreground">
               <CircleAlert className="size-4" aria-hidden />
@@ -89,10 +111,29 @@ export function OrderNotesDialog({
           <div className="flex flex-col gap-2 overflow-y-auto px-5 py-4">
             {order.notes && (
               <div className="rounded-xl border bg-muted/60 px-3 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  Observaciones al recibir · {formatDate(order.createdAt)}
-                </p>
-                <p className="text-sm">{order.notes}</p>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      Observaciones al recibir · {formatDate(order.createdAt)}
+                    </p>
+                    <p className="text-sm">{order.notes}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={deleting || busy || confirmPending !== null}
+                    aria-label="Borrar observaciones al recibir"
+                    title="Borrar"
+                    onClick={() =>
+                      setPendingDelete({
+                        preview: order.notes,
+                        run: () => clearIntakeNote(order.folio),
+                      })
+                    }
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
+                </div>
                 {order.photoId && <OrderPhoto photoId={order.photoId} className="mt-2 h-24 w-24 rounded-lg object-cover" />}
               </div>
             )}
@@ -106,10 +147,29 @@ export function OrderNotesDialog({
             )}
             {order.staffNotes.map((n) => (
               <div key={n.id} className="rounded-xl border border-warning bg-warning/10 px-3 py-2">
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  {formatDate(n.createdAt)}
-                </p>
-                <p className="text-sm whitespace-pre-wrap">{n.body}</p>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      {formatDate(n.createdAt)}
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap">{n.body}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={deleting || busy || confirmPending !== null}
+                    aria-label={`Borrar nota del ${formatDate(n.createdAt)}`}
+                    title="Borrar"
+                    onClick={() =>
+                      setPendingDelete({
+                        preview: n.body,
+                        run: () => removeNote(order.folio, n.id),
+                      })
+                    }
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
+                </div>
               </div>
             ))}
             {!order.notes && !order.photoId && order.staffNotes.length === 0 && (
@@ -187,6 +247,38 @@ export function OrderNotesDialog({
             </Button>
             <RefundActions order={order} onUpdated={(updated) => onUpdated?.(updated)} />
           </form>
+
+          {confirmPending && (
+            <div
+              role="alertdialog"
+              aria-labelledby="delete-note-title"
+              aria-describedby="delete-note-preview"
+              className="absolute inset-0 z-10 flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm"
+            >
+              <div className="w-full max-w-sm rounded-2xl bg-background p-5 shadow-2xl">
+                <h3 id="delete-note-title" className="font-semibold tracking-tight">
+                  ¿Borrar esta nota?
+                </h3>
+                <p id="delete-note-preview" className="mt-2 line-clamp-3 text-sm text-muted-foreground">
+                  {confirmPending.preview}
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={deleting}
+                    onClick={() => setPendingDelete(null)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="button" disabled={deleting} onClick={() => void confirmDelete()}>
+                    {deleting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+                    Sí
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </dialog>

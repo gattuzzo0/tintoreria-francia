@@ -13,6 +13,8 @@ import { clearReportsCache } from "@/lib/reports-cache";
 import {
   addOrderNote,
   attachOrderPhoto,
+  clearIntakeNotes,
+  deleteOrderNote,
   deleteOrderPhoto,
   deleteOrderPhotos,
   uploadOrderPhoto,
@@ -83,6 +85,8 @@ type PosContextValue = {
     settle?: { payment: PaidMethod; wantsInvoice: boolean },
   ) => Promise<Order>;
   addNote: (folio: number, body: string) => Promise<Order>;
+  removeNote: (folio: number, noteId: number) => Promise<Order>;
+  clearIntakeNote: (folio: number) => Promise<Order>;
   addOrderPhoto: (folio: number, file: File) => Promise<Order>;
   clearOrderPhotos: (folio: number) => Promise<Order>;
   addCustomer: (data: { name: string; phone: string }) => Promise<Customer>;
@@ -293,6 +297,24 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     [withAuth],
   );
 
+  const removeNote = useCallback(
+    async (folio: number, noteId: number) => {
+      const updated = await withAuth((t) => deleteOrderNote(t, folio, noteId));
+      clearOrdersCache();
+      return updated;
+    },
+    [withAuth],
+  );
+
+  const clearIntakeNote = useCallback(
+    async (folio: number) => {
+      const updated = await withAuth((t) => clearIntakeNotes(t, folio));
+      clearOrdersCache();
+      return updated;
+    },
+    [withAuth],
+  );
+
   const addOrderPhoto = useCallback(
     async (folio: number, file: File) => {
       const updated = await withAuth(async (t) => {
@@ -379,6 +401,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       checkout,
       advanceOrder,
       addNote,
+      removeNote,
+      clearIntakeNote,
       addOrderPhoto,
       clearOrderPhotos,
       addCustomer,
@@ -390,7 +414,7 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       patchSummary,
       withAuth,
     }),
-    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, summary, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, addOrderPhoto, clearOrderPhotos, addCustomer, saveCustomerFiscal, getCustomer, setServices, setRushRates, refreshSummary, patchSummary],
+    [withAuth, status, loadError, reload, draft, draftLines, draftTotals, services, rushRates, summary, customers, addItem, setQty, clearService, updateDraft, clearDraft, checkout, advanceOrder, addNote, removeNote, clearIntakeNote, addOrderPhoto, clearOrderPhotos, addCustomer, saveCustomerFiscal, getCustomer, setServices, setRushRates, refreshSummary, patchSummary],
   );
 
   return <PosContext.Provider value={value}>{children}</PosContext.Provider>;

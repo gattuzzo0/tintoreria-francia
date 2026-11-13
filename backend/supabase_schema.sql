@@ -166,7 +166,7 @@ create table if not exists tintoreria_francia.order_status_events (
 create index if not exists idx_tintoreria_francia_order_status_events_order_folio
   on tintoreria_francia.order_status_events (order_folio);
 
--- Notas del staff durante el proceso (p. ej. "se rompió un botón"). Solo se agregan.
+-- Notas del staff durante el proceso (p. ej. "se rompió un botón").
 create table if not exists tintoreria_francia.order_notes (
   id bigint generated always as identity primary key,
   order_folio integer not null references tintoreria_francia.orders (folio) on delete cascade,
