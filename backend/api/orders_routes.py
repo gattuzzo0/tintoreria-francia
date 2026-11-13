@@ -377,6 +377,21 @@ def _insert_note(folio: int, body: str, staff_user_id: str):
     )
 
 
+def _delete_note(folio: int, note_id: int):
+    return (
+        get_supabase()
+        .table("order_notes")
+        .delete()
+        .eq("id", note_id)
+        .eq("order_folio", folio)
+        .execute()
+    )
+
+
+def _clear_intake_notes(folio: int):
+    return get_supabase().table("orders").update({"notes": ""}).eq("folio", folio).execute()
+
+
 async def _get_order_or_404(folio: int) -> dict:
     try:
         res = await asyncio.to_thread(_fetch_order, folio)
@@ -872,6 +887,34 @@ async def add_order_note(folio: int, body: NoteCreate, staff: dict = Depends(req
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo guardar la nota") from None
 
     logger.info("audit order.note user_id=%s folio=%s", staff["user_id"], folio)
+    return _row_to_order_out(await _get_order_or_404(folio))
+
+
+@orders_router.delete("/{folio}/notes/intake", response_model=OrderOut)
+async def clear_intake_notes(folio: int, staff: dict = Depends(require_staff_writer)):
+    row = await _get_order_or_404(folio)
+    if not (row.get("notes") or "").strip():
+        return _row_to_order_out(row)
+    try:
+        await asyncio.to_thread(_clear_intake_notes, folio)
+    except Exception:
+        logger.exception("clear_intake_notes falló folio=%s", folio)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo borrar la nota") from None
+    logger.info("audit order.note.clear_intake user_id=%s folio=%s", staff["user_id"], folio)
+    return _row_to_order_out(await _get_order_or_404(folio))
+
+
+@orders_router.delete("/{folio}/notes/{note_id}", response_model=OrderOut)
+async def delete_order_note(folio: int, note_id: int, staff: dict = Depends(require_staff_writer)):
+    await _get_order_or_404(folio)
+    try:
+        res = await asyncio.to_thread(_delete_note, folio, note_id)
+    except Exception:
+        logger.exception("delete_order_note falló folio=%s note_id=%s", folio, note_id)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo borrar la nota") from None
+    if not res.data:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Nota no encontrada")
+    logger.info("audit order.note.delete user_id=%s folio=%s note_id=%s", staff["user_id"], folio, note_id)
     return _row_to_order_out(await _get_order_or_404(folio))
 
 

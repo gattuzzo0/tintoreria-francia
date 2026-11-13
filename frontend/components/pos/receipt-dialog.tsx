@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Check, Printer, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatMoney, type Order } from "@/lib/pos-data";
+import {
+  applyTicketPageStyle,
+  readTicketWidthMm,
+  subscribeTicketWidth,
+  ticketContentWidthMm,
+  type TicketWidthMm,
+} from "@/lib/ticket-width";
 import { usePos } from "./pos-provider";
 import { PrintableTicket } from "./printable-ticket";
+
+const ticketWidthServer = () => 58 as TicketWidthMm;
 
 export function ReceiptDialog({
   order,
@@ -19,6 +28,7 @@ export function ReceiptDialog({
   const ref = useRef<HTMLDialogElement>(null);
   const purged = useRef(false);
   const { getCustomer, clearOrderPhotos } = usePos();
+  const widthMm = useSyncExternalStore(subscribeTicketWidth, readTicketWidthMm, ticketWidthServer);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -31,12 +41,31 @@ export function ReceiptDialog({
     purged.current = false;
   }, [order?.folio]);
 
+  useEffect(() => {
+    if (!order) return;
+    applyTicketPageStyle(widthMm);
+  }, [order, widthMm]);
+
   const printTicket = () => {
     if (!order) return;
+    const source = document.getElementById("print-ticket");
+    if (!source) return;
+
+    applyTicketPageStyle(readTicketWidthMm());
+
+    document.getElementById("print-ticket-root")?.remove();
+    const root = document.createElement("div");
+    root.id = "print-ticket-root";
+    root.appendChild(source.cloneNode(true));
+    document.body.appendChild(root);
+    document.documentElement.classList.add("printing-ticket");
+
     const folio = order.folio;
     const hasPhoto = Boolean(order.photoId || order.photoIds?.length);
     const done = () => {
       window.removeEventListener("afterprint", done);
+      document.documentElement.classList.remove("printing-ticket");
+      root.remove();
       // ponytail: el navegador no distingue imprimir de cancelar el diálogo.
       if (!hasPhoto || purged.current) return;
       purged.current = true;
@@ -84,8 +113,11 @@ export function ReceiptDialog({
           </div>
 
           <div className="overflow-y-auto bg-muted px-4 py-6">
-            <div className="mx-auto max-w-[80mm] drop-shadow-lg print:filter-none">
-              <PrintableTicket order={order} customer={customer} />
+            <div
+              className="mx-auto drop-shadow-lg print:filter-none"
+              style={{ maxWidth: `${ticketContentWidthMm(widthMm)}mm` }}
+            >
+              <PrintableTicket order={order} customer={customer} widthMm={widthMm} />
               <div className="ticket-edge" aria-hidden />
             </div>
           </div>

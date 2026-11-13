@@ -36,4 +36,6 @@ export function noteMessage(name: string, folio: number, note: string): string {
   ) {
     throw new Error("noteMessage");
   }
+  const many = noteMessage("Genaro", 1117, "llego roto del cierre; tambien esta manchada");
+  if (!many.includes("llego roto del cierre; tambien esta manchada")) throw new Error("noteMessage many");
 }

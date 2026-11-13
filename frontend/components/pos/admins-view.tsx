@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Eye, EyeOff, Loader2, ShieldCheck, User, UserMinus, UserPlus } from "lucide-react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { Eye, EyeOff, Loader2, Printer, ShieldCheck, User, UserMinus, UserPlus } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { createAdmin, fetchAdmins, revokeStaff, type Admin, type StaffRole } from "@/lib/admins-api";
 import { ApiHttpError } from "@/lib/api-client";
 import { formatDate } from "@/lib/pos-data";
 import { isValidStaffPhone } from "@/lib/staff-login";
+import {
+  applyTicketPageStyle,
+  readTicketWidthMm,
+  saveTicketWidthMm,
+  subscribeTicketWidth,
+  type TicketWidthMm,
+} from "@/lib/ticket-width";
 import { cn } from "@/lib/utils";
 import { PHONE_DIGITS, sanitizePhoneInput } from "@/lib/validation";
 import { usePos } from "./pos-provider";
+
+const ticketWidthServer = () => 58 as TicketWidthMm;
 
 const FOCUS = "outline-none focus-visible:ring-3 focus-visible:ring-ring/30";
 const INPUT =
@@ -21,6 +30,11 @@ const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-fore
 const ROLES: { id: StaffRole; label: string; hint: string }[] = [
   { id: "empleado", label: "Empleado", hint: "Venta, órdenes y clientes." },
   { id: "admin", label: "Administrador", hint: "Acceso completo: reportes, catálogo y personal." },
+];
+
+const TICKET_WIDTHS: { id: TicketWidthMm; label: string; hint: string }[] = [
+  { id: 58, label: "58 mm", hint: "Rollo estrecho — térmica compacta." },
+  { id: 80, label: "80 mm", hint: "Rollo ancho — térmica estándar." },
 ];
 
 const PASSWORD_MIN = 8;
@@ -55,6 +69,7 @@ export function AdminsView() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<{ userId: string; message: string } | null>(null);
+  const ticketWidth = useSyncExternalStore(subscribeTicketWidth, readTicketWidthMm, ticketWidthServer);
 
   const onRevoke = async (userId: string) => {
     setRevokingId(userId);
@@ -80,6 +95,10 @@ export function AdminsView() {
       cancelled = true;
     };
   }, [withAuth]);
+
+  useEffect(() => {
+    applyTicketPageStyle(ticketWidth);
+  }, [ticketWidth]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +130,46 @@ export function AdminsView() {
         <h1 id="admins-title" className="text-2xl font-semibold tracking-tight">
           Administradores
         </h1>
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-2xl border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+            <Printer className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className={LABEL}>Caja</p>
+            <h2 className="text-lg font-semibold tracking-tight">Ancho de impresora</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Solo en este equipo. El ticket se imprime al ancho del rollo térmico.
+            </p>
+          </div>
+        </div>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="sr-only">Ancho del ticket</legend>
+          <div className="grid grid-cols-2 gap-2 sm:max-w-md">
+            {TICKET_WIDTHS.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                aria-pressed={ticketWidth === w.id}
+                onClick={() => saveTicketWidthMm(w.id)}
+                className={cn(
+                  "h-10 rounded-xl border text-sm font-medium transition-colors",
+                  FOCUS,
+                  ticketWidth === w.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "bg-card hover:bg-muted",
+                )}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {TICKET_WIDTHS.find((w) => w.id === ticketWidth)?.hint}
+          </p>
+        </fieldset>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_1fr] lg:items-start">
