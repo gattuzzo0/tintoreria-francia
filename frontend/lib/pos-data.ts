@@ -65,6 +65,10 @@ export type OrderLine = {
   fill: string;
   /** Vacío si la prenda no lleva largo. tres_cuartos, mediapierna, largo o extra. */
   length: string;
+  /** rayas, cuadros o ninguno. Vacío en kilo y en órdenes anteriores. */
+  pattern: string;
+  /** Solo planchado: la línea se cobró al 60%. */
+  pressOnly: boolean;
 };
 
 export type OrderNote = { id: number; body: string; createdAt: string };

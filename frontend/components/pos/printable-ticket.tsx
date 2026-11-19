@@ -1,7 +1,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import { fillingText } from "@/lib/fillings";
 import { lengthText } from "@/lib/lengths";
-import { garmentColor } from "@/lib/garment-colors";
+import { garmentColor, patternText } from "@/lib/garment-colors";
 import { getBranchInfo } from "@/lib/branches";
 import { formatDeliveryLong } from "@/lib/delivery";
 import { formatMoney, orderSurchargePct, PAYMENT_LABEL, type Customer, type Order } from "@/lib/pos-data";
@@ -43,7 +43,7 @@ export function PrintableTicket({
   const branchInfo = getBranchInfo(order.branch);
   const narrow = widthMm === 58;
   const contentMm = ticketContentWidthMm(widthMm);
-  const qr = narrow ? 72 : 112;
+  const qr = narrow ? 128 : 168;
 
   return (
     <article
@@ -98,11 +98,13 @@ export function PrintableTicket({
         {order.lines.map((l) => {
           const color = garmentColor(l.color);
           return (
-            <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}`}>
+            <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}:${l.pattern}:${l.pressOnly}`}>
               <div className="flex items-start justify-between gap-1">
                 <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
                   {l.qty} {l.unit} · {l.name}
                   {color ? ` · ${color.label}` : ""}
+                  {patternText(l.pattern) ? ` · ${patternText(l.pattern)}` : ""}
+                  {l.pressOnly ? " · Solo planchado" : ""}
                   {l.fill ? ` · ${fillingText(l.fill)}` : ""}
                   {l.length ? ` · ${lengthText(l.length)}` : ""}
                 </span>
@@ -154,12 +156,12 @@ export function PrintableTicket({
         <QRCodeSVG
           value={String(order.folio)}
           size={qr}
-          level="M"
-          marginSize={0}
-          fgColor="currentColor"
-          bgColor="transparent"
+          level="H"
+          marginSize={4}
+          fgColor="#000000"
+          bgColor="#ffffff"
           title={`Código QR de la orden ${order.folio}`}
-          className={narrow ? "size-[72px]" : "size-28"}
+          className={narrow ? "size-[32mm]" : "size-[40mm]"}
         />
         <p className="font-semibold tracking-wide">{order.folio}</p>
         {order.branch && <p className="break-words font-semibold [overflow-wrap:anywhere]">{order.branch}</p>}

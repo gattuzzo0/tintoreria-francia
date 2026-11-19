@@ -453,11 +453,11 @@
     height: auto !important;
   }
   #print-ticket-root #print-ticket svg {
-    max-width: 22mm !important;
+    max-width: 32mm !important;
     height: auto !important;
   }
   html[data-ticket-mm="80"] #print-ticket-root #print-ticket svg {
-    max-width: 30mm !important;
+    max-width: 40mm !important;
   }
   .ticket-edge {
     display: none !important;

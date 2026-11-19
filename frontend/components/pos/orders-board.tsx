@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowRight, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyNote, Zap } from "lucide-react";
+import { ArrowRight, Camera, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBranchInfo, readBranch } from "@/lib/branches";
 import { formatDeliveryShort } from "@/lib/delivery";
@@ -19,6 +19,7 @@ import { customerFiscal } from "./fiscal-form";
 import { InvoiceDialog, type InvoiceResult } from "./invoice-dialog";
 import { OrderNotesDialog } from "./order-notes-dialog";
 import { OrderPhoto } from "./order-photo";
+import { OrderQrScanDialog } from "./order-qr-scan-dialog";
 import { usePos } from "./pos-provider";
 
 const COLUMNS: OrderStatus[] = ["recibido", "proceso", "listo", "entregado"];
@@ -43,6 +44,7 @@ export function OrdersBoard() {
   const [settle, setSettle] = useState<Order | null>(null);
   const [error, setError] = useState<{ folio: number; message: string } | null>(null);
   const [query, setQuery] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
   const [page, setPage] = useState<OrderStatus>("recibido");
   const [sweep, setSweep] = useState<{
     from: OrderStatus;
@@ -169,6 +171,15 @@ export function OrdersBoard() {
     }
     setRows((prev) => prev.map((o) => (o.folio === order.folio ? order : o)));
   };
+  const scannedFolio = useRef(false);
+  const showPageRef = useRef<(next: OrderStatus) => void>(() => {});
+  const onQrScan = useCallback((folio: string) => {
+    scannedFolio.current = true;
+    setQrOpen(false);
+    setQuery(folio);
+    showPageRef.current("listo");
+  }, []);
+
   const toggle = (folio: number) => setExpanded((f) => (f === folio ? null : folio));
   const noMatch = query.length > 0 && !loading && (page === "entregado" ? deliveredRows.length === 0 : rows.length === 0);
   const active = summary.recibido + summary.proceso + summary.listo;
@@ -214,6 +225,10 @@ export function OrdersBoard() {
     setPage(next);
     setExpanded(null);
   };
+
+  useEffect(() => {
+    showPageRef.current = showPage;
+  });
 
   const pageProps = {
     orders: noteFirst(rows),
@@ -261,31 +276,52 @@ export function OrdersBoard() {
         })}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="relative w-full sm:w-64">
-          {noMatch ? (
-            <CircleX className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-destructive" aria-hidden />
-          ) : (
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          )}
-          <input
-            ref={searchRef}
-            type="search"
-            inputMode="numeric"
-            aria-label="Buscar número de orden"
-            aria-invalid={noMatch || undefined}
-            placeholder="Número de orden…"
-            maxLength={FOLIO_MAX_DIGITS}
-            value={query}
-            onPointerDown={() => setQuery("")}
-            onFocus={() => setQuery("")}
-            onChange={(e) => setQuery(e.target.value.replace(/\D/g, "").slice(0, FOLIO_MAX_DIGITS))}
-            className={cn(
-              "h-10 w-full rounded-xl border bg-background pr-3 pl-9 font-mono text-base tracking-wider outline-none focus-visible:ring-3 sm:text-sm placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground",
-              noMatch
-                ? "border-destructive text-destructive focus-visible:ring-destructive/30"
-                : "border-input focus-visible:ring-ring/30",
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+            {noMatch ? (
+              <CircleX className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-destructive" aria-hidden />
+            ) : (
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             )}
-          />
+            <input
+              ref={searchRef}
+              type="search"
+              inputMode="numeric"
+              aria-label="Buscar número de orden"
+              aria-invalid={noMatch || undefined}
+              placeholder="Número de orden…"
+              maxLength={FOLIO_MAX_DIGITS}
+              value={query}
+              onPointerDown={() => {
+                if (scannedFolio.current) return;
+                setQuery("");
+              }}
+              onFocus={() => {
+                if (scannedFolio.current) {
+                  scannedFolio.current = false;
+                  return;
+                }
+                setQuery("");
+              }}
+              onChange={(e) => setQuery(e.target.value.replace(/\D/g, "").slice(0, FOLIO_MAX_DIGITS))}
+              className={cn(
+                "h-10 w-full rounded-xl border bg-background pr-3 pl-9 font-mono text-base tracking-wider outline-none focus-visible:ring-3 sm:text-sm placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground",
+                noMatch
+                  ? "border-destructive text-destructive focus-visible:ring-destructive/30"
+                  : "border-input focus-visible:ring-ring/30",
+              )}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-lg"
+            className="shrink-0 rounded-xl"
+            aria-label="Escanear código QR del ticket"
+            onClick={() => setQrOpen(true)}
+          >
+            <Camera aria-hidden />
+          </Button>
         </div>
         <dl className="flex gap-8 font-mono">
           <div>
@@ -345,6 +381,7 @@ export function OrdersBoard() {
         )}
       </div>
       <OrderNotesDialog order={notesOrder} onClose={() => setNotesFolio(null)} onUpdated={remember} />
+      <OrderQrScanDialog open={qrOpen} onClose={() => setQrOpen(false)} onScan={onQrScan} />
       <InvoiceDialog
         open={settle !== null}
         customerName={settle ? (getCustomer(settle.customerId)?.name ?? "Cliente") : ""}
@@ -583,12 +620,12 @@ function OrderPage({
                         {isOpen && (
                           <ul id={live ? `order-lines-${o.folio}` : undefined} className="mt-2 flex flex-col gap-1 rounded-lg bg-muted/60 p-2.5 text-xs">
                             {o.lines.map((l) => (
-                              <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}`} className="flex items-baseline justify-between gap-3">
+                              <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}:${l.pattern}:${l.pressOnly}`} className="flex items-baseline justify-between gap-3">
                                 <span>
                                   <span className="font-mono">
                                     {l.qty} {l.unit}
                                   </span>{" "}
-                                  · {l.name} <GarmentColorMark color={l.color} />
+                                  · {l.name} <GarmentColorMark color={l.color} pattern={l.pattern} pressOnly={l.pressOnly} />
                                   {l.fill ? <span className="text-muted-foreground"> · {fillingText(l.fill)}</span> : null}
                                   {l.length ? <span className="text-muted-foreground"> · {lengthText(l.length)}</span> : null}
                                 </span>

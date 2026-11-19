@@ -123,8 +123,13 @@ def _services(orders: list[dict], categories: dict[str, str]) -> tuple[list[dict
             sid = str(l["service_id"])
             qty = int(l["qty"])
             revenue = int(l["unit_price_cents"]) * qty
+            press = bool(l.get("press_only"))
             category = categories.get(sid, "Otros")
-            row = by_service.setdefault(sid, {"serviceId": sid, "name": l["name"], "category": category, "qty": 0, "revenueCents": 0})
+            name = f"{l['name']} · Solo planchado" if press else l["name"]
+            row = by_service.setdefault(
+                f"{sid}:press" if press else sid,
+                {"serviceId": sid, "name": name, "category": category, "qty": 0, "revenueCents": 0, "pressOnly": press},
+            )
             row["qty"] += qty
             row["revenueCents"] += revenue
             by_category[category]["qty"] += qty
@@ -256,16 +261,26 @@ def build_report(start: date, end: date, branch: str) -> dict:
     prev_start = start - timedelta(days=span)
     select = (
         "folio, customer_id, express, delivery_date, payment_method, branch, status, total_cents, created_at, "
-        "order_lines(service_id, name, qty, unit_price_cents)"
+        "order_lines(service_id, name, qty, unit_price_cents, press_only)"
     )
-    orders = _fetch_all(
-        lambda: sb.table("orders")
-        .select(select)
-        .eq("branch", branch)
-        .gte("created_at", _day_start(prev_start).isoformat())
-        .lt("created_at", _day_start(end + timedelta(days=1)).isoformat())
-        .order("folio")
-    )
+
+    def load(columns: str) -> list[dict]:
+        return _fetch_all(
+            lambda: sb.table("orders")
+            .select(columns)
+            .eq("branch", branch)
+            .gte("created_at", _day_start(prev_start).isoformat())
+            .lt("created_at", _day_start(end + timedelta(days=1)).isoformat())
+            .order("folio")
+        )
+
+    try:
+        orders = load(select)
+    except APIError as exc:
+        if exc.code != "42703":
+            raise
+        logger.warning("Reportes sin press_only; aplica la migración 000025")
+        orders = load(select.replace(", press_only", ""))
     voided = _voided_cash_folios(branch)
     current = [o for o in orders if _ts(o["created_at"]).date() >= start and int(o["folio"]) not in voided]
     previous = [o for o in orders if _ts(o["created_at"]).date() < start and int(o["folio"]) not in voided]

@@ -19,10 +19,14 @@ export function fillingOf(id: string) {
   return BY_ID.get(id) ?? null;
 }
 
+/** Solo planchado cobra este porcentaje del precio ya con relleno y largo. */
+export const PRESS_ONLY_PCT = 60;
+
 /** Centavos. Relleno y largo se suman sobre el precio de catálogo. */
-export function linePrice(priceCents: number, fill: string, length = ""): number {
+export function linePrice(priceCents: number, fill: string, length = "", pressOnly = false): number {
   const pct = (fillingOf(fill)?.pct ?? 0) + (lengthOf(length)?.pct ?? 0);
-  return Math.round((priceCents * (100 + pct)) / 100);
+  const full = Math.round((priceCents * (100 + pct)) / 100);
+  return pressOnly ? Math.round((full * PRESS_ONLY_PCT) / 100) : full;
 }
 
 export function filledPrice(priceCents: number, fill: string): number {
@@ -43,4 +47,6 @@ export function fillingText(id: string): string {
   if (filledPrice(10000, "") !== 10000) throw new Error("sin relleno");
   if (linePrice(15000, "", "tres_cuartos") !== 18750) throw new Error("tres cuartos");
   if (linePrice(15000, "", "extra") !== 25500) throw new Error("extra largo");
+  if (linePrice(12000, "", "", true) !== 7200) throw new Error("solo planchado");
+  if (linePrice(15000, "", "tres_cuartos", true) !== 11250) throw new Error("solo planchado con largo");
 }

@@ -73,8 +73,8 @@ type PosContextValue = {
   rushRates: RushRates;
   summary: OrderSummary;
   customers: Customer[];
-  addItem: (id: string, color: string, fill?: string, length?: string) => void;
-  setQty: (id: string, color: string, fill: string, length: string, qty: number) => void;
+  addItem: (id: string, color: string, fill?: string, length?: string, pattern?: string, pressOnly?: boolean) => void;
+  setQty: (id: string, color: string, fill: string, length: string, pattern: string, pressOnly: boolean, qty: number) => void;
   clearService: (id: string) => void;
   updateDraft: (patch: Partial<Draft>) => void;
   clearDraft: () => void;
@@ -194,11 +194,13 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
         serviceId: service.id,
         name: service.name,
         unit: service.unit,
-        unitPriceCents: linePrice(service.priceCents, parsed.fill, parsed.length),
+        unitPriceCents: linePrice(service.priceCents, parsed.fill, parsed.length, parsed.pressOnly),
         qty,
         color: parsed.color,
         fill: parsed.fill,
         length: parsed.length,
+        pattern: parsed.pattern,
+        pressOnly: parsed.pressOnly,
       });
     }
     return lines;
@@ -208,8 +210,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     [draftLines, draft.express, draft.deliveryDate, rushRates],
   );
 
-  const setQty = useCallback((id: string, color: string, fill: string, length: string, qty: number) => {
-    const key = lineKey(id, color, fill, length);
+  const setQty = useCallback((id: string, color: string, fill: string, length: string, pattern: string, pressOnly: boolean, qty: number) => {
+    const key = lineKey(id, color, fill, length, pattern, pressOnly);
     setDraft((d) => {
       const quantities = { ...d.quantities };
       if (qty <= 0) delete quantities[key];
@@ -227,8 +229,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const addItem = useCallback((id: string, color: string, fill = "", length = "") => {
-    const key = lineKey(id, color, fill, length);
+  const addItem = useCallback((id: string, color: string, fill = "", length = "", pattern = "", pressOnly = false) => {
+    const key = lineKey(id, color, fill, length, pattern, pressOnly);
     setDraft((d) => ({
       ...d,
       quantities: { ...d.quantities, [key]: Math.min(999, (d.quantities[key] ?? 0) + 1) },
@@ -261,6 +263,8 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
         color: l.color,
         fill: l.fill,
         length: l.length,
+        pattern: l.pattern,
+        pressOnly: l.pressOnly,
       })),
     };
     const key = idempotencyKey.current;

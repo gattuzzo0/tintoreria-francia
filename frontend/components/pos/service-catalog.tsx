@@ -28,14 +28,14 @@ export function ServiceCatalog({
   const [menu, setMenu] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const [picking, setPicking] = useState<{ id: string; name: string; priceCents: number } | null>(null);
-  const [filling, setFilling] = useState<{ id: string; name: string; priceCents: number; color: string } | null>(null);
-  const [lengthening, setLengthening] = useState<{ id: string; name: string; priceCents: number; color: string; fill: string } | null>(null);
+  const [filling, setFilling] = useState<{ id: string; name: string; priceCents: number; color: string; pattern: string; pressOnly: boolean } | null>(null);
+  const [lengthening, setLengthening] = useState<{ id: string; name: string; priceCents: number; color: string; pattern: string; pressOnly: boolean; fill: string } | null>(null);
   const locked = !draft.customerId;
 
-  const begin = (piece: { id: string; name: string; priceCents: number; color: string }) => {
+  const begin = (piece: { id: string; name: string; priceCents: number; color: string; pattern: string; pressOnly: boolean }) => {
     if (needsFilling(piece.name)) setFilling(piece);
     else if (needsLength(piece.name)) setLengthening({ ...piece, fill: "" });
-    else addItem(piece.id, piece.color, "", "");
+    else addItem(piece.id, piece.color, "", "", piece.pattern, piece.pressOnly);
   };
   const services = all.filter((s) => s.category === tab);
 
@@ -100,7 +100,7 @@ export function ServiceCatalog({
                 type="button"
                 disabled={locked}
                 onClick={() => {
-                  if (s.unit === "kg") begin({ id: s.id, name: s.name, priceCents: s.priceCents, color: "" });
+                  if (s.unit === "kg") begin({ id: s.id, name: s.name, priceCents: s.priceCents, color: "", pattern: "", pressOnly: false });
                   else setPicking({ id: s.id, name: s.name, priceCents: s.priceCents });
                 }}
                 className={cn(
@@ -163,8 +163,8 @@ export function ServiceCatalog({
       <ColorRevolver
         open={picking !== null}
         garment={picking?.name ?? ""}
-        onSelect={(color) => {
-          if (picking) begin({ ...picking, color });
+        onSelect={(color, pattern, pressOnly) => {
+          if (picking) begin({ ...picking, color, pattern, pressOnly });
         }}
         onClose={() => setPicking(null)}
       />
@@ -174,11 +174,11 @@ export function ServiceCatalog({
         labelledBy="fill-dialog-title"
         garment={filling?.name ?? ""}
         options={FILLINGS}
-        priceFor={(id) => linePrice(filling?.priceCents ?? 0, id)}
+        priceFor={(id) => linePrice(filling?.priceCents ?? 0, id, "", filling?.pressOnly)}
         onSelect={(fill) => {
           if (!filling) return;
           if (needsLength(filling.name)) setLengthening({ ...filling, fill });
-          else addItem(filling.id, filling.color, fill, "");
+          else addItem(filling.id, filling.color, fill, "", filling.pattern, filling.pressOnly);
         }}
         onClose={() => setFilling(null)}
       />
@@ -188,9 +188,9 @@ export function ServiceCatalog({
         labelledBy="length-dialog-title"
         garment={lengthening?.name ?? ""}
         options={LENGTHS}
-        priceFor={(id) => linePrice(lengthening?.priceCents ?? 0, lengthening?.fill ?? "", id)}
+        priceFor={(id) => linePrice(lengthening?.priceCents ?? 0, lengthening?.fill ?? "", id, lengthening?.pressOnly)}
         onSelect={(length) => {
-          if (lengthening) addItem(lengthening.id, lengthening.color, lengthening.fill, length);
+          if (lengthening) addItem(lengthening.id, lengthening.color, lengthening.fill, length, lengthening.pattern, lengthening.pressOnly);
         }}
         onClose={() => setLengthening(null)}
       />

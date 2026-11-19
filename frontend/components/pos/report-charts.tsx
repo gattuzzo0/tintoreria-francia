@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { formatMoney } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
@@ -54,24 +55,96 @@ export function Kpi({
   );
 }
 
+function placeDailyTip(tip: HTMLElement, bar: HTMLElement) {
+  const pad = 8;
+  const b = bar.getBoundingClientRect();
+  tip.style.maxWidth = "";
+  tip.style.whiteSpace = "";
+  let t = tip.getBoundingClientRect();
+  const maxW = window.innerWidth - pad * 2;
+  if (t.width > maxW) {
+    tip.style.maxWidth = `${maxW}px`;
+    tip.style.whiteSpace = "normal";
+    t = tip.getBoundingClientRect();
+  }
+  const header = document.querySelector("header")?.getBoundingClientRect();
+  const nav = document.querySelector('nav[aria-label="Secciones"]')?.getBoundingClientRect();
+  const minY = Math.max(pad, header && header.bottom > 0 ? header.bottom + pad : pad);
+  let maxY = window.innerHeight - pad;
+  if (nav && nav.top > window.innerHeight * 0.5) maxY = Math.min(maxY, nav.top - pad);
+  const left = Math.max(pad, Math.min(b.left + b.width / 2 - t.width / 2, window.innerWidth - t.width - pad));
+  let top = b.top - t.height - 6;
+  if (top < minY) top = b.top + 4;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${Math.max(minY, Math.min(top, Math.max(minY, maxY - t.height)))}px`;
+  tip.style.visibility = "visible";
+}
+
 export function DailyChart({ points }: { points: { date: string; salesCents: number; orders: number }[] }) {
   const max = Math.max(1, ...points.map((p) => p.salesCents));
   const every = Math.max(1, Math.ceil(points.length / 10));
+  // ponytail: one fixed tip, clamped to the viewport. Per-bar absolute tips leave the screen.
+  const [open, setOpen] = useState<string | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
+  const active = hover ?? open;
+  const selected = points.find((p) => p.date === active);
+  const plotRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const tip = tipRef.current;
+    const bar = plotRef.current?.querySelector<HTMLElement>(`[data-date="${active ?? ""}"]`);
+    if (!tip || !bar || !active) return;
+    const place = () => placeDailyTip(tip, bar);
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [active, points]);
+
   return (
     <div>
-      <div className="flex h-44 items-end gap-[3px]" role="img" aria-label="Ventas por día">
-        {points.map((p) => (
-          <div key={p.date} className="group relative flex h-full flex-1 items-end">
-            <div
-              className="w-full rounded-t-sm bg-primary/80 transition-colors group-hover:bg-primary"
-              style={{ height: `${Math.max(p.salesCents > 0 ? 2 : 0, (p.salesCents / max) * 100)}%` }}
-            />
-            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 rounded-md border bg-card px-2 py-1 text-[11px] whitespace-nowrap shadow-sm group-hover:block">
-              <span className="font-mono">{shortDate(p.date)}</span> · {formatMoney(p.salesCents)} · {p.orders} órd.
-            </div>
-          </div>
-        ))}
+      <div ref={plotRef} className="flex h-44 items-end gap-[3px]" role="group" aria-label="Ventas por día">
+        {points.map((p) => {
+          const on = active === p.date;
+          return (
+            <button
+              key={p.date}
+              type="button"
+              data-date={p.date}
+              aria-pressed={open === p.date}
+              aria-label={`${shortDate(p.date)}, ${formatMoney(p.salesCents)}, ${p.orders} órdenes`}
+              onClick={() => {
+                setHover(null);
+                setOpen(open === p.date ? null : p.date);
+              }}
+              onPointerEnter={(e) => {
+                if (e.pointerType === "mouse") setHover(p.date);
+              }}
+              onPointerLeave={(e) => {
+                if (e.pointerType === "mouse") setHover(null);
+              }}
+              className="relative flex h-full min-w-0 flex-1 cursor-pointer touch-manipulation appearance-none items-end border-0 bg-transparent p-0 outline-none"
+            >
+              <span
+                className={cn("w-full rounded-t-sm bg-primary/80", on && "bg-primary")}
+                style={{ height: `${Math.max(p.salesCents > 0 ? 2 : 0, (p.salesCents / max) * 100)}%` }}
+              />
+            </button>
+          );
+        })}
       </div>
+      {selected && (
+        <span
+          ref={tipRef}
+          className="pointer-events-none invisible fixed z-20 rounded-md border bg-card px-2 py-1 text-[11px] whitespace-nowrap shadow-sm"
+        >
+          <span className="font-mono">{shortDate(selected.date)}</span> · {formatMoney(selected.salesCents)} · {selected.orders} órd.
+        </span>
+      )}
       <div className="mt-2 flex gap-[3px]">
         {points.map((p, i) => (
           <span key={p.date} className="min-w-0 flex-1 text-center whitespace-nowrap font-mono text-[10px] text-muted-foreground">
