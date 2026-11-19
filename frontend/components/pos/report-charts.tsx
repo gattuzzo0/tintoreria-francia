@@ -108,9 +108,7 @@ export function DailyChart({ points }: { points: { date: string; salesCents: num
   return (
     <div>
       <div ref={plotRef} className="flex h-44 items-end gap-[3px]" role="group" aria-label="Ventas por día">
-        {points.map((p) => {
-          const on = active === p.date;
-          return (
+        {points.map((p) => (
             <button
               key={p.date}
               type="button"
@@ -130,12 +128,11 @@ export function DailyChart({ points }: { points: { date: string; salesCents: num
               className="relative flex h-full min-w-0 flex-1 cursor-pointer touch-manipulation appearance-none items-end border-0 bg-transparent p-0 outline-none"
             >
               <span
-                className={cn("w-full rounded-t-sm bg-primary/80", on && "bg-primary")}
+                className={cn("w-full rounded-t-sm bg-primary/80", open === p.date && "bg-green-600")}
                 style={{ height: `${Math.max(p.salesCents > 0 ? 2 : 0, (p.salesCents / max) * 100)}%` }}
               />
             </button>
-          );
-        })}
+        ))}
       </div>
       {selected && (
         <span
