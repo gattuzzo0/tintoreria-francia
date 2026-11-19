@@ -151,7 +151,8 @@ create table if not exists tintoreria_francia.order_lines (
   color text not null default '' check (color in ('', 'rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco')),
   fill text not null default '' check (fill in ('', 'medio', 'abundante', 'maxi')),
   length text not null default '' check (length in ('', 'tres_cuartos', 'mediapierna', 'largo', 'extra')),
-  unique (order_folio, service_id, color, fill, length)
+  pattern text not null default '' check (pattern in ('', 'rayas', 'cuadros', 'ninguno')),
+  unique (order_folio, service_id, color, fill, length, pattern)
 );
 
 -- Historial de estados (para medir tiempos de proceso). Lo llena el trigger
@@ -311,9 +312,10 @@ $$;
 -- ---------------------------------------------------------------------
 -- create_order: crea orden + líneas en una transacción. Los precios se
 -- resuelven del catálogo (nunca del cliente). Idempotente por p_idempotency_key.
--- p_lines: [{"serviceId": "s1", "qty": 2, "color": "negro", "fill": "", "length": ""}, ...]
+-- p_lines: [{"serviceId": "s1", "qty": 2, "color": "negro", "fill": "", "length": "", "pattern": "ninguno"}, ...]
 -- fill si el nombre contiene "relleno": medio +30%, abundante +60%, maxi +85%.
 -- length si el nombre contiene "largo": tres_cuartos +25%, mediapierna +50%, largo +60%, extra +70%.
+-- pattern (rayas, cuadros o ninguno) es obligatorio en prendas y no cambia el precio. El kilo lo deja vacío.
 -- Los porcentajes se suman sobre el precio de catálogo.
 -- p_delivery_date (día local CDMX): regular +5…+15; exprés hoy, mañana o +2. Domingo → lunes.
 -- ---------------------------------------------------------------------
@@ -345,6 +347,7 @@ declare
   v_color text;
   v_fill text;
   v_length text;
+  v_pattern text;
   v_extra integer;
   v_price integer;
   v_pct integer;
@@ -412,10 +415,14 @@ begin
     end if;
 
     v_color := coalesce(v_line ->> 'color', '');
+    v_pattern := coalesce(v_line ->> 'pattern', '');
     if v_service.unit = 'kg' then
       v_color := '';
+      v_pattern := '';
     elsif v_color not in ('rojo', 'amarillo', 'verde', 'azul', 'azul_claro', 'morado', 'rosa', 'naranja', 'cafe', 'negro', 'blanco') then
       raise exception 'Color inválido' using errcode = '22023';
+    elsif v_pattern not in ('rayas', 'cuadros', 'ninguno') then
+      raise exception 'Elige rayas, cuadros o ninguno' using errcode = '22023';
     end if;
 
     v_fill := coalesce(v_line ->> 'fill', '');
@@ -444,8 +451,8 @@ begin
     end if;
     v_price := round(v_service.price_cents * (100 + v_extra) / 100.0)::integer;
 
-    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color, fill, length)
-    values (v_folio, v_service.id, v_service.name, v_service.unit, v_price, v_qty, v_color, v_fill, v_length);
+    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern)
+    values (v_folio, v_service.id, v_service.name, v_service.unit, v_price, v_qty, v_color, v_fill, v_length, v_pattern);
   end loop;
 
   select extra_same_pct, extra_next_pct, urgent_pct

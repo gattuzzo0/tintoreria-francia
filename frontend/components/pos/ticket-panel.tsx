@@ -124,11 +124,11 @@ export function TicketPanel({
           ) : (
             <ul className="min-h-0 divide-y overflow-y-auto rounded-xl border">
               {draftLines.map((l) => (
-                <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}`} className="flex items-center gap-3 px-3 py-1.5">
+                <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}:${l.pattern}`} className="flex items-center gap-3 px-3 py-1.5">
                   <p className="min-w-0 flex-1 text-sm">
                     <span className="block truncate font-medium">{l.name}</span>
                     <span className="flex flex-wrap items-center gap-x-1.5">
-                      <GarmentColorMark color={l.color} />
+                      <GarmentColorMark color={l.color} pattern={l.pattern} />
                       {l.fill ? <span className="text-xs text-muted-foreground">{fillingText(l.fill)}</span> : null}
                       {l.length ? <span className="text-xs text-muted-foreground">{lengthText(l.length)}</span> : null}
                       <span className="font-mono text-xs text-muted-foreground">{formatMoney(l.unitPriceCents)}</span>
@@ -137,7 +137,7 @@ export function TicketPanel({
                   <div className="flex items-center rounded-lg border">
                     <button
                       type="button"
-                      onClick={() => setQty(l.serviceId, l.color, l.fill, l.length, l.qty - 1)}
+                      onClick={() => setQty(l.serviceId, l.color, l.fill, l.length, l.pattern, l.qty - 1)}
                       aria-label={`Quitar una unidad de ${l.name}`}
                       className={cn("inline-flex size-8 items-center justify-center rounded-md hover:bg-muted md:size-6", FOCUS)}
                     >
@@ -146,7 +146,7 @@ export function TicketPanel({
                     <span className="w-7 text-center font-mono text-xs">{l.qty}</span>
                     <button
                       type="button"
-                      onClick={() => setQty(l.serviceId, l.color, l.fill, l.length, l.qty + 1)}
+                      onClick={() => setQty(l.serviceId, l.color, l.fill, l.length, l.pattern, l.qty + 1)}
                       aria-label={`Agregar una unidad de ${l.name}`}
                       className={cn("inline-flex size-8 items-center justify-center rounded-md hover:bg-muted md:size-6", FOCUS)}
                     >

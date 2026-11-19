@@ -34,12 +34,13 @@ GARMENT_COLORS = frozenset(
 )
 FILLINGS = frozenset({"medio", "abundante", "maxi"})
 LENGTHS = frozenset({"tres_cuartos", "mediapierna", "largo", "extra"})
+PATTERNS = frozenset({"rayas", "cuadros", "ninguno"})
 Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
     "folio, customer_id, express, delivery_date, payment_method, wants_invoice, status, notes, branch, created_at, status_updated_at, "
     "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
-    "order_lines(service_id, name, unit, unit_price_cents, qty, color, fill, length), "
+    "order_lines(service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern), "
     "order_notes(id, body, created_at)"
 )
 _SELECT = _SELECT_PLAIN + ", order_photos(id, created_at)"
@@ -53,6 +54,7 @@ class OrderLineIn(BaseModel):
     color: str = Field(default="", max_length=20)
     fill: str = Field(default="", max_length=20)
     length: str = Field(default="", max_length=20)
+    pattern: str = Field(default="", max_length=20)
 
     @field_validator("color")
     @classmethod
@@ -73,6 +75,13 @@ class OrderLineIn(BaseModel):
     def length_ok(cls, v: str) -> str:
         if v and v not in LENGTHS:
             raise ValueError("Largo inválido")
+        return v
+
+    @field_validator("pattern")
+    @classmethod
+    def pattern_ok(cls, v: str) -> str:
+        if v and v not in PATTERNS:
+            raise ValueError("Elige rayas, cuadros o ninguno")
         return v
 
 
@@ -115,8 +124,8 @@ class OrderCreate(BaseModel):
     @field_validator("lines")
     @classmethod
     def unique_services(cls, v: list[OrderLineIn]) -> list[OrderLineIn]:
-        if len({(line.service_id, line.color, line.fill, line.length) for line in v}) != len(v):
-            raise ValueError("Cada servicio, color, relleno y largo debe aparecer una sola vez")
+        if len({(line.service_id, line.color, line.fill, line.length, line.pattern) for line in v}) != len(v):
+            raise ValueError("Cada servicio, color, relleno, largo y diseño debe aparecer una sola vez")
         return v
 
 
@@ -168,6 +177,7 @@ class OrderLineOut(BaseModel):
     color: str = ""
     fill: str = ""
     length: str = ""
+    pattern: str = ""
 
 
 class DeliveredOut(BaseModel):
@@ -316,6 +326,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
                 color=str(line.get("color") or ""),
                 fill=str(line.get("fill") or ""),
                 length=str(line.get("length") or ""),
+                pattern=str(line.get("pattern") or ""),
             )
             for line in row.get("order_lines") or []
         ],
@@ -803,6 +814,7 @@ async def create_order(
                 "color": line.color,
                 "fill": line.fill,
                 "length": line.length,
+                "pattern": line.pattern,
             }
             for line in body.lines
         ],

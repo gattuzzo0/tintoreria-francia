@@ -620,12 +620,12 @@ function OrderPage({
                         {isOpen && (
                           <ul id={live ? `order-lines-${o.folio}` : undefined} className="mt-2 flex flex-col gap-1 rounded-lg bg-muted/60 p-2.5 text-xs">
                             {o.lines.map((l) => (
-                              <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}`} className="flex items-baseline justify-between gap-3">
+                              <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}:${l.pattern}`} className="flex items-baseline justify-between gap-3">
                                 <span>
                                   <span className="font-mono">
                                     {l.qty} {l.unit}
                                   </span>{" "}
-                                  · {l.name} <GarmentColorMark color={l.color} />
+                                  · {l.name} <GarmentColorMark color={l.color} pattern={l.pattern} />
                                   {l.fill ? <span className="text-muted-foreground"> · {fillingText(l.fill)}</span> : null}
                                   {l.length ? <span className="text-muted-foreground"> · {lengthText(l.length)}</span> : null}
                                 </span>

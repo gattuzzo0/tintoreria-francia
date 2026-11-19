@@ -24,21 +24,50 @@ export function garmentColor(id: string): GarmentColor | null {
   return BY_ID.get(id) ?? null;
 }
 
+/** Obligatorio al elegir color. Ninguno se guarda y no se imprime. */
+export const GARMENT_PATTERNS = [
+  { id: "rayas", label: "Rayas" },
+  { id: "cuadros", label: "Cuadros" },
+  { id: "ninguno", label: "Ninguno" },
+] as const;
+
+export type GarmentPatternId = (typeof GARMENT_PATTERNS)[number]["id"];
+
+const PATTERN_IDS = new Set<string>(GARMENT_PATTERNS.map((item) => item.id));
+
+export function isGarmentPattern(id: string): id is GarmentPatternId {
+  return PATTERN_IDS.has(id);
+}
+
+export function patternText(id: string): string {
+  if (id === "rayas") return "Rayas";
+  if (id === "cuadros") return "Cuadros";
+  return "";
+}
+
 /** ponytail: tab no sale en ids de servicio. */
 const SEP = "\t";
 
-export function lineKey(serviceId: string, color: string, fill = "", length = ""): string {
-  return `${serviceId}${SEP}${color}${SEP}${fill}${SEP}${length}`;
+export function lineKey(serviceId: string, color: string, fill = "", length = "", pattern = ""): string {
+  return `${serviceId}${SEP}${color}${SEP}${fill}${SEP}${length}${SEP}${pattern}`;
 }
 
-export function parseLineKey(key: string): { serviceId: string; color: string; fill: string; length: string } | null {
+export function parseLineKey(
+  key: string,
+): { serviceId: string; color: string; fill: string; length: string; pattern: string } | null {
   const parts = key.split(SEP);
-  if (parts.length !== 4) return null;
-  const [serviceId, color, fill, length] = parts;
-  if (!serviceId || (color !== "" && !garmentColor(color)) || (fill !== "" && !fillingOf(fill)) || (length !== "" && !lengthOf(length))) {
+  if (parts.length !== 5) return null;
+  const [serviceId, color, fill, length, pattern] = parts;
+  if (
+    !serviceId ||
+    (color !== "" && !garmentColor(color)) ||
+    (fill !== "" && !fillingOf(fill)) ||
+    (length !== "" && !lengthOf(length)) ||
+    (pattern !== "" && !isGarmentPattern(pattern))
+  ) {
     return null;
   }
-  return { serviceId, color, fill, length };
+  return { serviceId, color, fill, length, pattern };
 }
 
 export function qtyForService(quantities: Record<string, number>, serviceId: string): number {
@@ -49,14 +78,14 @@ export function qtyForService(quantities: Record<string, number>, serviceId: str
 }
 
 {
-  const parsed = parseLineKey(lineKey("s1", "rojo"));
-  if (!parsed || parsed.serviceId !== "s1" || parsed.color !== "rojo" || parsed.fill !== "" || parsed.length !== "") throw new Error("lineKey");
+  const parsed = parseLineKey(lineKey("s1", "rojo", "", "", "ninguno"));
+  if (!parsed || parsed.serviceId !== "s1" || parsed.color !== "rojo" || parsed.pattern !== "ninguno") throw new Error("lineKey");
   if (parseLineKey("s1") !== null || parseLineKey("s1\trojo") !== null) throw new Error("parseLineKey");
-  const filled = parseLineKey(lineKey("s19", "negro", "medio"));
-  if (!filled || filled.fill !== "medio" || filled.length !== "") throw new Error("fill key");
-  const long = parseLineKey(lineKey("s126", "blanco", "", "extra"));
-  if (!long || long.length !== "extra") throw new Error("length key");
-  if (!garmentColor("rosa") || !garmentColor("azul_claro")) throw new Error("garmentColor");
+  const filled = parseLineKey(lineKey("s19", "negro", "medio", "", "rayas"));
+  if (!filled || filled.fill !== "medio" || filled.pattern !== "rayas") throw new Error("fill key");
+  const long = parseLineKey(lineKey("s126", "blanco", "", "extra", "cuadros"));
+  if (!long || long.length !== "extra" || long.pattern !== "cuadros") throw new Error("length key");
+  if (!garmentColor("rosa") || !garmentColor("azul_claro") || patternText("ninguno") !== "") throw new Error("garmentColor");
   const kilo = parseLineKey(lineKey("s7", ""));
-  if (!kilo || kilo.color !== "" || kilo.fill !== "" || kilo.length !== "") throw new Error("kilo");
+  if (!kilo || kilo.color !== "" || kilo.pattern !== "") throw new Error("kilo");
 }
