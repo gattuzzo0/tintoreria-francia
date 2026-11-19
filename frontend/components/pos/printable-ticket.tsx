@@ -43,7 +43,7 @@ export function PrintableTicket({
   const branchInfo = getBranchInfo(order.branch);
   const narrow = widthMm === 58;
   const contentMm = ticketContentWidthMm(widthMm);
-  const qr = narrow ? 72 : 112;
+  const qr = narrow ? 128 : 168;
 
   return (
     <article
@@ -154,12 +154,12 @@ export function PrintableTicket({
         <QRCodeSVG
           value={String(order.folio)}
           size={qr}
-          level="M"
-          marginSize={0}
-          fgColor="currentColor"
-          bgColor="transparent"
+          level="H"
+          marginSize={4}
+          fgColor="#000000"
+          bgColor="#ffffff"
           title={`Código QR de la orden ${order.folio}`}
-          className={narrow ? "size-[72px]" : "size-28"}
+          className={narrow ? "size-[32mm]" : "size-[40mm]"}
         />
         <p className="font-semibold tracking-wide">{order.folio}</p>
         {order.branch && <p className="break-words font-semibold [overflow-wrap:anywhere]">{order.branch}</p>}
