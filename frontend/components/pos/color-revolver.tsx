@@ -5,14 +5,23 @@ import { Check, X } from "lucide-react";
 import { GARMENT_COLORS, GARMENT_PATTERNS, garmentColor, patternText } from "@/lib/garment-colors";
 import { cn } from "@/lib/utils";
 
-export function GarmentColorMark({ color, pattern = "" }: { color: string; pattern?: string }) {
+export function GarmentColorMark({
+  color,
+  pattern = "",
+  pressOnly = false,
+}: {
+  color: string;
+  pattern?: string;
+  pressOnly?: boolean;
+}) {
   const c = garmentColor(color);
   const design = patternText(pattern);
-  if (!c && !design) return null;
+  const bits = [c?.label, design, pressOnly ? "Solo planchado" : ""].filter(Boolean);
+  if (bits.length === 0) return null;
   return (
     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
       {c ? <span className="size-2.5 rounded-full border border-black/20" style={{ background: c.hex }} /> : null}
-      {[c?.label, design].filter(Boolean).join(" · ")}
+      {bits.join(" · ")}
     </span>
   );
 }
@@ -39,11 +48,12 @@ function ColorForm({
   onClose,
 }: {
   garment: string;
-  onSelect: (color: string, pattern: string) => void;
+  onSelect: (color: string, pattern: string, pressOnly: boolean) => void;
   onClose: () => void;
 }) {
   const [color, setColor] = useState<string | null>(null);
   const [pattern, setPattern] = useState<string | null>(null);
+  const [pressOnly, setPressOnly] = useState(false);
   const ready = color !== null && pattern !== null;
 
   return (
@@ -126,12 +136,31 @@ function ColorForm({
         </div>
       </fieldset>
 
+      <label className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2">
+        <span>
+          <span className="block text-sm font-medium">Solo planchado</span>
+          <span className="block text-xs text-neutral-500">Se cobra el 60% de la prenda</span>
+        </span>
+        <span className="relative inline-flex shrink-0 items-center">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={pressOnly}
+            aria-label="Solo planchado"
+            onChange={(e) => setPressOnly(e.target.checked)}
+            className="peer sr-only"
+          />
+          <span className="h-6 w-11 rounded-full bg-neutral-200 peer-checked:bg-neutral-900 peer-focus-visible:ring-3 peer-focus-visible:ring-ring/30" />
+          <span className="pointer-events-none absolute top-0.5 left-0.5 size-5 rounded-full bg-white transition-transform peer-checked:translate-x-5" />
+        </span>
+      </label>
+
       <button
         type="button"
         disabled={!ready}
         onClick={() => {
           if (!color || !pattern) return;
-          onSelect(color, pattern);
+          onSelect(color, pattern, pressOnly);
           onClose();
         }}
         className="mt-4 h-11 w-full rounded-xl bg-neutral-900 text-sm font-medium text-white outline-none hover:bg-neutral-800 focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-40"
@@ -150,7 +179,7 @@ export function ColorRevolver({
 }: {
   open: boolean;
   garment: string;
-  onSelect: (color: string, pattern: string) => void;
+  onSelect: (color: string, pattern: string, pressOnly: boolean) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);

@@ -14,6 +14,7 @@ Si una regla genérica del repo (plantilla Vite, `VITE_*`, CRA) contradice esto,
 - Dinero en centavos enteros. Los precios del catálogo ya incluyen IVA 16%. `subtotal = round(total / 1.16)`, `IVA = total − subtotal`. El recargo exprés va dentro del total, no se suma otra vez.
 - Pagos nuevos: `tarjeta`, `efectivo`, `pendiente` (Al recoger). `transferencia` solo se muestra en órdenes viejas y en reportes. La API rechaza escrituras nuevas. No reescribir el RPC `create_order` ni el check de la base: las filas históricas deben seguir siendo válidas.
 - Al elegir color hay que escoger rayas, cuadros o ninguno. No cambia el precio. Se guarda en `order_lines.pattern`. Ninguno no se imprime. El kilo no lleva diseño. Migración `000024`; sin ella el alta responde 503. Las órdenes viejas quedan con patrón vacío.
+- Solo planchado es un interruptor en el selector de color, apagado por defecto. Cobra el 60% del precio de la prenda ya con relleno y largo, redondeado a centavos. Se guarda en `order_lines.press_only`. El kilo no lo lleva. En reportes sale como línea aparte. Migración `000025`.
 
 ## Factura (no es CFDI)
 

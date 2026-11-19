@@ -48,26 +48,34 @@ export function patternText(id: string): string {
 /** ponytail: tab no sale en ids de servicio. */
 const SEP = "\t";
 
-export function lineKey(serviceId: string, color: string, fill = "", length = "", pattern = ""): string {
-  return `${serviceId}${SEP}${color}${SEP}${fill}${SEP}${length}${SEP}${pattern}`;
+export function lineKey(
+  serviceId: string,
+  color: string,
+  fill = "",
+  length = "",
+  pattern = "",
+  pressOnly = false,
+): string {
+  return `${serviceId}${SEP}${color}${SEP}${fill}${SEP}${length}${SEP}${pattern}${SEP}${pressOnly ? "1" : ""}`;
 }
 
 export function parseLineKey(
   key: string,
-): { serviceId: string; color: string; fill: string; length: string; pattern: string } | null {
+): { serviceId: string; color: string; fill: string; length: string; pattern: string; pressOnly: boolean } | null {
   const parts = key.split(SEP);
-  if (parts.length !== 5) return null;
-  const [serviceId, color, fill, length, pattern] = parts;
+  if (parts.length !== 6) return null;
+  const [serviceId, color, fill, length, pattern, press] = parts;
   if (
     !serviceId ||
     (color !== "" && !garmentColor(color)) ||
     (fill !== "" && !fillingOf(fill)) ||
     (length !== "" && !lengthOf(length)) ||
-    (pattern !== "" && !isGarmentPattern(pattern))
+    (pattern !== "" && !isGarmentPattern(pattern)) ||
+    (press !== "" && press !== "1")
   ) {
     return null;
   }
-  return { serviceId, color, fill, length, pattern };
+  return { serviceId, color, fill, length, pattern, pressOnly: press === "1" };
 }
 
 export function qtyForService(quantities: Record<string, number>, serviceId: string): number {
@@ -87,5 +95,7 @@ export function qtyForService(quantities: Record<string, number>, serviceId: str
   if (!long || long.length !== "extra" || long.pattern !== "cuadros") throw new Error("length key");
   if (!garmentColor("rosa") || !garmentColor("azul_claro") || patternText("ninguno") !== "") throw new Error("garmentColor");
   const kilo = parseLineKey(lineKey("s7", ""));
-  if (!kilo || kilo.color !== "" || kilo.pattern !== "") throw new Error("kilo");
+  if (!kilo || kilo.color !== "" || kilo.pattern !== "" || kilo.pressOnly) throw new Error("kilo");
+  const pressed = parseLineKey(lineKey("s1", "azul", "", "", "ninguno", true));
+  if (!pressed || !pressed.pressOnly) throw new Error("press");
 }

@@ -24,7 +24,7 @@ export type Report = {
     aging: { label: string; orders: number; pieces: number }[];
     oldestReady: { folio: number; customerName: string; days: number; totalCents: number; payment: PaymentMethod }[];
   };
-  services: { serviceId: string; name: string; category: string; qty: number; revenueCents: number }[];
+  services: { serviceId: string; name: string; category: string; qty: number; revenueCents: number; pressOnly?: boolean }[];
   categories: { category: string; qty: number; revenueCents: number }[];
   payments: { method: PaymentMethod; orders: number; salesCents: number }[];
   customers: {

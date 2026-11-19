@@ -40,7 +40,7 @@ Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 _SELECT_PLAIN = (
     "folio, customer_id, express, delivery_date, payment_method, wants_invoice, status, notes, branch, created_at, status_updated_at, "
     "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
-    "order_lines(service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern), "
+    "order_lines(service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern, press_only), "
     "order_notes(id, body, created_at)"
 )
 _SELECT = _SELECT_PLAIN + ", order_photos(id, created_at)"
@@ -55,6 +55,7 @@ class OrderLineIn(BaseModel):
     fill: str = Field(default="", max_length=20)
     length: str = Field(default="", max_length=20)
     pattern: str = Field(default="", max_length=20)
+    press_only: bool = Field(default=False, alias="pressOnly")
 
     @field_validator("color")
     @classmethod
@@ -124,8 +125,8 @@ class OrderCreate(BaseModel):
     @field_validator("lines")
     @classmethod
     def unique_services(cls, v: list[OrderLineIn]) -> list[OrderLineIn]:
-        if len({(line.service_id, line.color, line.fill, line.length, line.pattern) for line in v}) != len(v):
-            raise ValueError("Cada servicio, color, relleno, largo y diseño debe aparecer una sola vez")
+        if len({(line.service_id, line.color, line.fill, line.length, line.pattern, line.press_only) for line in v}) != len(v):
+            raise ValueError("Cada servicio, color, relleno, largo, diseño y planchado debe aparecer una sola vez")
         return v
 
 
@@ -178,6 +179,7 @@ class OrderLineOut(BaseModel):
     fill: str = ""
     length: str = ""
     pattern: str = ""
+    pressOnly: bool = False
 
 
 class DeliveredOut(BaseModel):
@@ -327,6 +329,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
                 fill=str(line.get("fill") or ""),
                 length=str(line.get("length") or ""),
                 pattern=str(line.get("pattern") or ""),
+                pressOnly=bool(line.get("press_only")),
             )
             for line in row.get("order_lines") or []
         ],
@@ -815,6 +818,7 @@ async def create_order(
                 "fill": line.fill,
                 "length": line.length,
                 "pattern": line.pattern,
+                "pressOnly": line.press_only,
             }
             for line in body.lines
         ],

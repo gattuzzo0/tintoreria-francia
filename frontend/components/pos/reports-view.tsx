@@ -284,7 +284,7 @@ function ReportBody({ report: r }: { report: Report }) {
           <SectionTitle id="rep-services" eyebrow="Sin cargo exprés" title="Servicios más vendidos" />
           <BarList
             rows={r.services.slice(0, 10).map((x) => ({
-              key: x.serviceId,
+              key: `${x.serviceId}:${x.pressOnly ? "press" : "full"}`,
               label: x.name,
               value: x.revenueCents,
               display: formatMoney(x.revenueCents),

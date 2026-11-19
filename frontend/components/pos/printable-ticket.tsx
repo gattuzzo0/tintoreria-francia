@@ -98,12 +98,13 @@ export function PrintableTicket({
         {order.lines.map((l) => {
           const color = garmentColor(l.color);
           return (
-            <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}:${l.pattern}`}>
+            <li key={`${l.serviceId}:${l.color}:${l.fill}:${l.length}:${l.pattern}:${l.pressOnly}`}>
               <div className="flex items-start justify-between gap-1">
                 <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
                   {l.qty} {l.unit} · {l.name}
                   {color ? ` · ${color.label}` : ""}
                   {patternText(l.pattern) ? ` · ${patternText(l.pattern)}` : ""}
+                  {l.pressOnly ? " · Solo planchado" : ""}
                   {l.fill ? ` · ${fillingText(l.fill)}` : ""}
                   {l.length ? ` · ${lengthText(l.length)}` : ""}
                 </span>

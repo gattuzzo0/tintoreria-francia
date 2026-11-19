@@ -152,7 +152,8 @@ create table if not exists tintoreria_francia.order_lines (
   fill text not null default '' check (fill in ('', 'medio', 'abundante', 'maxi')),
   length text not null default '' check (length in ('', 'tres_cuartos', 'mediapierna', 'largo', 'extra')),
   pattern text not null default '' check (pattern in ('', 'rayas', 'cuadros', 'ninguno')),
-  unique (order_folio, service_id, color, fill, length, pattern)
+  press_only boolean not null default false,
+  unique (order_folio, service_id, color, fill, length, pattern, press_only)
 );
 
 -- Historial de estados (para medir tiempos de proceso). Lo llena el trigger
@@ -316,6 +317,7 @@ $$;
 -- fill si el nombre contiene "relleno": medio +30%, abundante +60%, maxi +85%.
 -- length si el nombre contiene "largo": tres_cuartos +25%, mediapierna +50%, largo +60%, extra +70%.
 -- pattern (rayas, cuadros o ninguno) es obligatorio en prendas y no cambia el precio. El kilo lo deja vacío.
+-- pressOnly cobra el 60% del precio ya con relleno y largo. El kilo lo deja en false.
 -- Los porcentajes se suman sobre el precio de catálogo.
 -- p_delivery_date (día local CDMX): regular +5…+15; exprés hoy, mañana o +2. Domingo → lunes.
 -- ---------------------------------------------------------------------
@@ -348,6 +350,7 @@ declare
   v_fill text;
   v_length text;
   v_pattern text;
+  v_press boolean;
   v_extra integer;
   v_price integer;
   v_pct integer;
@@ -450,9 +453,15 @@ begin
       raise exception 'Este servicio no lleva largo' using errcode = '22023';
     end if;
     v_price := round(v_service.price_cents * (100 + v_extra) / 100.0)::integer;
+    v_press := coalesce(v_line ->> 'pressOnly', '') in ('true', 't');
+    if v_service.unit = 'kg' then
+      v_press := false;
+    elsif v_press then
+      v_price := round(v_price * 60 / 100.0)::integer;
+    end if;
 
-    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern)
-    values (v_folio, v_service.id, v_service.name, v_service.unit, v_price, v_qty, v_color, v_fill, v_length, v_pattern);
+    insert into tintoreria_francia.order_lines (order_folio, service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern, press_only)
+    values (v_folio, v_service.id, v_service.name, v_service.unit, v_price, v_qty, v_color, v_fill, v_length, v_pattern, v_press);
   end loop;
 
   select extra_same_pct, extra_next_pct, urgent_pct
