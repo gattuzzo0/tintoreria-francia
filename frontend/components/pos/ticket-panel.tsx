@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { CalendarDays, Camera, Loader2, Minus, Plus, Trash2, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { deliveryOn, formatDeliveryLong, formatDeliveryShort, isAllowedDelivery, REGULAR_MIN_DAYS, rushPct } from "@/lib/delivery";
+import { agreedHours, deliveryOn, formatDeliveryLong, formatDeliveryShort, formatHour, isAllowedDelivery, REGULAR_MIN_DAYS, rushPct } from "@/lib/delivery";
 import { fillingText } from "@/lib/fillings";
 import { lengthText } from "@/lib/lengths";
 import { deleteOrderPhoto, uploadOrderPhoto } from "@/lib/pos-api";
@@ -47,8 +47,11 @@ export function TicketPanel({
   const [pickingExpress, setPickingExpress] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [invoicing, setInvoicing] = useState(false);
+  const needsHour =
+    draft.express === true && (draft.deliveryDate === deliveryOn(0) || draft.deliveryDate === deliveryOn(1));
+  const hourOk = !needsHour || (draft.deliveryHour != null && agreedHours(draft.deliveryDate).includes(draft.deliveryHour));
   const deliveryOk =
-    draft.express !== null && Boolean(draft.deliveryDate) && isAllowedDelivery(draft.deliveryDate, draft.express);
+    draft.express !== null && Boolean(draft.deliveryDate) && isAllowedDelivery(draft.deliveryDate, draft.express) && hourOk;
 
   const chooseDelivery = (express: boolean) => {
     if (express) {
@@ -56,7 +59,7 @@ export function TicketPanel({
       setPickingExpress(true);
       return;
     }
-    updateDraft({ express: false, deliveryDate: deliveryOn(REGULAR_MIN_DAYS) });
+    updateDraft({ express: false, deliveryDate: deliveryOn(REGULAR_MIN_DAYS), deliveryHour: null });
   };
 
   const nextFolio = summary.nextFolio;
@@ -167,9 +170,11 @@ export function TicketPanel({
               {draft.express === null
                 ? "Elige tipo y fecha"
                 : draft.express
-                  ? isAllowedDelivery(draft.deliveryDate, true)
-                    ? `Cargo de ${rushPct(draft.deliveryDate, true, rushRates)}%`
-                    : "Elige la fecha"
+                  ? !isAllowedDelivery(draft.deliveryDate, true)
+                    ? "Elige la fecha"
+                    : needsHour && !hourOk
+                      ? "Elige la hora"
+                      : `Cargo de ${rushPct(draft.deliveryDate, true, rushRates)}%`
                   : "Sin cargo extra"}
             </span>
           </legend>
@@ -204,7 +209,13 @@ export function TicketPanel({
               type="button"
               onClick={() => (draft.express ? setPickingExpress(true) : setPickingDate(true))}
               disabled={draft.express === null}
-              aria-label={deliveryOk ? `Entrega: ${formatDeliveryLong(draft.deliveryDate)}` : "Elegir fecha de entrega"}
+              aria-label={
+                deliveryOk
+                  ? `Entrega: ${formatDeliveryLong(draft.deliveryDate)}${draft.deliveryHour != null ? ` a las ${formatHour(draft.deliveryHour)}` : ""}`
+                  : needsHour
+                    ? "Elegir hora de entrega"
+                    : "Elegir fecha de entrega"
+              }
               className={cn(
                 "inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border px-2 text-xs font-medium transition-colors",
                 FOCUS,
@@ -213,7 +224,15 @@ export function TicketPanel({
               )}
             >
               <CalendarDays className="size-4 shrink-0" aria-hidden />
-              <span className="truncate">{deliveryOk ? formatDeliveryShort(draft.deliveryDate) : "Fecha"}</span>
+              <span className="truncate">
+                {draft.deliveryDate && isAllowedDelivery(draft.deliveryDate, draft.express === true)
+                  ? needsHour
+                    ? `${draft.deliveryDate === deliveryOn(0) ? "Hoy" : formatDeliveryShort(draft.deliveryDate)}${
+                        draft.deliveryHour != null ? ` ${formatHour(draft.deliveryHour)}` : ""
+                      }`
+                    : formatDeliveryShort(draft.deliveryDate)
+                  : "Fecha"}
+              </span>
             </button>
           </div>
         </fieldset>
@@ -355,6 +374,7 @@ export function TicketPanel({
       <CheckoutConfirmDialog
         open={confirming}
         deliveryDate={draft.deliveryDate}
+        deliveryHour={draft.deliveryHour}
         totalCents={draftTotals.total}
         payment={draft.payment}
         busy={busy}
@@ -392,14 +412,15 @@ export function TicketPanel({
       <DeliveryDateDialog
         open={pickingDate}
         value={draft.express === false ? draft.deliveryDate : ""}
-        onSelect={(deliveryDate) => updateDraft({ deliveryDate })}
+        onSelect={(deliveryDate) => updateDraft({ deliveryDate, deliveryHour: null })}
         onClose={() => setPickingDate(false)}
       />
       <ExpressDeliveryDialog
         open={pickingExpress}
         value={draft.deliveryDate}
+        hour={draft.deliveryHour}
         rates={rushRates}
-        onSelect={(deliveryDate) => updateDraft({ express: true, deliveryDate })}
+        onSelect={(deliveryDate, deliveryHour) => updateDraft({ express: true, deliveryDate, deliveryHour })}
         onClose={() => setPickingExpress(false)}
       />
     </aside>

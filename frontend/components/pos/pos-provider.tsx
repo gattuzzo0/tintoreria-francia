@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { ApiHttpError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase";
 import { readBranch } from "@/lib/branches";
-import { DEFAULT_RUSH_RATES, rushPct, type RushRates } from "@/lib/delivery";
+import { DEFAULT_RUSH_RATES, deliveryOn, rushPct, type RushRates } from "@/lib/delivery";
 import { linePrice } from "@/lib/fillings";
 import { lineKey, parseLineKey } from "@/lib/garment-colors";
 import { clearOrdersCache } from "@/lib/orders-board-cache";
@@ -24,6 +24,7 @@ import {
   updateCustomerFiscal,
   fetchCustomers,
   fetchDeliveryRates,
+  fetchInvoiceGap,
   fetchOrderSummary,
   fetchServices,
   type OrderSummary,
@@ -47,6 +48,8 @@ export type Draft = {
   express: boolean | null;
   /** YYYY-MM-DD; vacío hasta que el empleado elige en el calendario. */
   deliveryDate: string;
+  /** Hora en punto. Extra urgente de hoy o del día siguiente. */
+  deliveryHour: number | null;
   payment: PaymentMethod;
   notes: string;
   photoId: string | null;
@@ -57,6 +60,7 @@ const EMPTY_DRAFT: Draft = {
   customerId: null,
   express: null,
   deliveryDate: "",
+  deliveryHour: null,
   payment: "tarjeta",
   notes: "",
   photoId: null,
@@ -112,10 +116,11 @@ type PosContextValue = {
 const PosContext = createContext<PosContextValue | null>(null);
 
 export function PosProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useAuth();
+  const { session, role } = useAuth();
+  const accountant = role === "contador";
   const token = session?.access_token ?? "";
 
-  const [status, setStatus] = useState<PosContextValue["status"]>("loading");
+  const [status, setStatus] = useState<PosContextValue["status"]>(accountant ? "ready" : "loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [services, setServicesState] = useState<Service[]>([]);
@@ -172,16 +177,21 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const reload = useCallback(async () => {
+    if (accountant) {
+      setStatus("ready");
+      return;
+    }
     setStatus("loading");
     await fetchAll().then(applyData, applyError);
-  }, [fetchAll, applyData, applyError]);
+  }, [accountant, fetchAll, applyData, applyError]);
 
   const userId = session?.user.id;
   useEffect(() => {
-    if (userId) fetchAll().then(applyData, applyError);
+    if (!userId || accountant) return;
+    fetchAll().then(applyData, applyError);
     // Solo al cambiar de usuario: cada refresh de token cambia `fetchAll` y no debe recargar los datos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, accountant]);
 
   const draftLines = useMemo(() => {
     const lines: OrderLine[] = [];
@@ -252,6 +262,10 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
       customerId: draft.customerId,
       express: draft.express,
       deliveryDate: draft.deliveryDate,
+      deliveryHour:
+        draft.express && (draft.deliveryDate === deliveryOn(0) || draft.deliveryDate === deliveryOn(1))
+          ? draft.deliveryHour
+          : null,
       payment: draft.payment,
       branch,
       notes: sanitizeText(draft.notes, NOTES_MAX).trim(),
@@ -377,10 +391,15 @@ export function PosProvider({ children }: { children: React.ReactNode }) {
   const setServices = useCallback((next: Service[]) => setServicesState(next.filter((s) => s.active)), []);
   const setRushRates = useCallback((next: RushRates) => setRushRatesState(next), []);
   const refreshSummary = useCallback(async () => {
+    if (accountant) {
+      const gap = await withAuth((t) => fetchInvoiceGap(t));
+      setSummary((current) => ({ ...current, incompleteInvoices: gap.incompleteInvoices }));
+      return;
+    }
     const branch = readBranch();
     if (!branch) return;
     setSummary(await withAuth((t) => fetchOrderSummary(t, branch)));
-  }, [withAuth]);
+  }, [withAuth, accountant]);
   const patchSummary = useCallback((patch: (current: OrderSummary) => OrderSummary) => {
     setSummary(patch);
   }, []);

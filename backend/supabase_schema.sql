@@ -22,7 +22,7 @@ create schema if not exists tintoreria_francia;
 -- ---------------------------------------------------------------------
 create table if not exists tintoreria_francia.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  role text not null check (role in ('admin', 'empleado')),
+  role text not null check (role in ('admin', 'empleado', 'contador')),
   full_name text,
   created_at timestamptz not null default now()
 );
@@ -117,6 +117,9 @@ create table if not exists tintoreria_francia.orders (
 
 -- Fecha prometida de entrega (día local CDMX). Se rellena y se vuelve NOT NULL al final del archivo.
 alter table tintoreria_francia.orders add column if not exists delivery_date date;
+-- Hora en punto acordada. Solo extra urgente de hoy; null en el resto y en órdenes viejas.
+alter table tintoreria_francia.orders add column if not exists delivery_hour smallint
+  check (delivery_hour is null or delivery_hour between 9 and 19);
 alter table tintoreria_francia.orders
   add column if not exists branch text
   check (branch is null or branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro'));
@@ -222,6 +225,33 @@ create table if not exists tintoreria_francia.expenses (
 create index if not exists idx_tintoreria_francia_expenses_branch_spent_on
   on tintoreria_francia.expenses (branch, spent_on desc);
 
+-- Apertura de insumos. Ver migrations/000026_supply_openings.sql.
+create table if not exists tintoreria_francia.supply_openings (
+  id uuid primary key default gen_random_uuid(),
+  branch text not null check (branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro')),
+  item text not null check (char_length(item) between 1 and 80),
+  opened_on date not null check (opened_on between date '2020-01-01' and date '2100-12-31'),
+  staff_user_id uuid not null references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_tintoreria_francia_supply_openings_branch_opened_on
+  on tintoreria_francia.supply_openings (branch, opened_on desc);
+
+-- Artículos a descontar. Ver migrations/000027_supply_items.sql y 000028_supply_item_quantity.sql.
+create table if not exists tintoreria_francia.supply_items (
+  id uuid primary key default gen_random_uuid(),
+  branch text not null check (branch in ('Nereo Rdz.', 'Sucursal móvil', 'Centro')),
+  name text not null check (char_length(name) between 1 and 80),
+  unit text not null check (unit in ('litro', 'kilogramo', 'pza')),
+  quantity_milli integer not null check (quantity_milli between 1 and 999999000),
+  staff_user_id uuid not null references auth.users (id),
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_tintoreria_francia_supply_items_branch_name
+  on tintoreria_francia.supply_items (branch, lower(name));
+
 -- Reembolso en efectivo. Ver migrations/000016_refunds.sql.
 create table if not exists tintoreria_francia.refunds (
   id uuid primary key default gen_random_uuid(),
@@ -264,6 +294,10 @@ alter table tintoreria_francia.delivery_rates enable row level security;
 alter table tintoreria_francia.delivery_rates force row level security;
 alter table tintoreria_francia.expenses enable row level security;
 alter table tintoreria_francia.expenses force row level security;
+alter table tintoreria_francia.supply_openings enable row level security;
+alter table tintoreria_francia.supply_openings force row level security;
+alter table tintoreria_francia.supply_items enable row level security;
+alter table tintoreria_francia.supply_items force row level security;
 alter table tintoreria_francia.refunds enable row level security;
 alter table tintoreria_francia.refunds force row level security;
 
@@ -320,6 +354,7 @@ $$;
 -- pressOnly cobra el 60% del precio ya con relleno y largo. El kilo lo deja en false.
 -- Los porcentajes se suman sobre el precio de catálogo.
 -- p_delivery_date (día local CDMX): regular +5…+15; exprés hoy, mañana o +2. Domingo → lunes.
+-- p_delivery_hour: extra urgente de hoy (después de ahora) o del día siguiente, de 9:00 a 19:00.
 -- ---------------------------------------------------------------------
 drop function if exists tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, text);
 drop function if exists tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, date, text);
@@ -334,7 +369,8 @@ create or replace function tintoreria_francia.create_order(
   p_lines jsonb,
   p_delivery_date date,
   p_branch text,
-  p_idempotency_key text default null
+  p_idempotency_key text default null,
+  p_delivery_hour integer default null
 )
 returns integer
 language plpgsql
@@ -358,6 +394,7 @@ declare
   v_next_pct integer;
   v_two_pct integer;
   v_today date := (now() at time zone 'America/Mexico_City')::date;
+  v_clock integer := extract(hour from (now() at time zone 'America/Mexico_City'))::int;
   v_same date;
   v_next date;
   v_urgent date;
@@ -399,9 +436,24 @@ begin
     raise exception 'La entrega regular debe ser entre 5 y 15 días, sin domingos' using errcode = '22023';
   end if;
 
+  if p_express and p_delivery_date = v_today then
+    if p_delivery_hour is null
+       or p_delivery_hour < 9
+       or p_delivery_hour > 19
+       or p_delivery_hour <= v_clock then
+      raise exception 'Elige una hora de hoy, después de ahora y hasta las 19:00' using errcode = '22023';
+    end if;
+  elsif p_express and p_delivery_date = v_next then
+    if p_delivery_hour is null or p_delivery_hour < 9 or p_delivery_hour > 19 then
+      raise exception 'Elige una hora del día siguiente, entre las 9:00 y las 19:00' using errcode = '22023';
+    end if;
+  elsif p_delivery_hour is not null then
+    raise exception 'La hora solo aplica a la entrega extra urgente de hoy o de mañana' using errcode = '22023';
+  end if;
+
   insert into tintoreria_francia.orders
-    (customer_id, express, delivery_days, delivery_date, payment_method, notes, staff_user_id, idempotency_key, branch)
-  values (p_customer_id, p_express, p_delivery_date - v_today, p_delivery_date, p_payment_method,
+    (customer_id, express, delivery_days, delivery_date, delivery_hour, payment_method, notes, staff_user_id, idempotency_key, branch)
+  values (p_customer_id, p_express, p_delivery_date - v_today, p_delivery_date, p_delivery_hour, p_payment_method,
           coalesce(p_notes, ''), p_staff_user_id, p_idempotency_key, p_branch)
   returning folio into v_folio;
 
@@ -505,9 +557,9 @@ create trigger trg_tintoreria_francia_orders_status_events
 
 revoke all on function tintoreria_francia.log_order_status() from public, anon, authenticated;
 revoke all on function tintoreria_francia.recalc_order_totals(integer) from public, anon, authenticated;
-revoke all on function tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, date, text, text) from public, anon, authenticated;
+revoke all on function tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, date, text, text, integer) from public, anon, authenticated;
 grant execute on function tintoreria_francia.recalc_order_totals(integer) to service_role;
-grant execute on function tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, date, text, text) to service_role;
+grant execute on function tintoreria_francia.create_order(uuid, uuid, boolean, text, text, jsonb, date, text, text, integer) to service_role;
 
 -- ---------------------------------------------------------------------
 -- Datos iniciales

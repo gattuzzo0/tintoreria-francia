@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Eye, EyeOff, Loader2, Printer, ShieldCheck, User, UserMinus, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Loader2, Printer, Receipt, ShieldCheck, User, UserMinus, UserPlus } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 import { createAdmin, fetchAdmins, revokeStaff, type Admin, type StaffRole } from "@/lib/admins-api";
@@ -28,9 +28,16 @@ const INPUT =
 const LABEL = "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground";
 
 const ROLES: { id: StaffRole; label: string; hint: string }[] = [
-  { id: "empleado", label: "Empleado", hint: "Venta, órdenes y clientes." },
+  { id: "empleado", label: "Empleado", hint: "Venta, órdenes, clientes y contabilidad." },
+  { id: "contador", label: "Contador", hint: "Solo contabilidad." },
   { id: "admin", label: "Administrador", hint: "Acceso completo: reportes, catálogo y personal." },
 ];
+
+const ROLE_LABEL: Record<StaffRole, string> = {
+  admin: "Admin",
+  empleado: "Empleado",
+  contador: "Contador",
+};
 
 const TICKET_WIDTHS: { id: TicketWidthMm; label: string; hint: string }[] = [
   { id: 58, label: "58 mm", hint: "Rollo estrecho — térmica compacta." },
@@ -288,7 +295,7 @@ export function AdminsView() {
           )}
           <Button type="submit" className="rounded-xl" disabled={busy}>
             {busy ? <Loader2 className="animate-spin" aria-hidden /> : <UserPlus aria-hidden />}
-            Crear {role === "admin" ? "administrador" : "empleado"}
+            Crear {role === "admin" ? "administrador" : role === "contador" ? "contador" : "empleado"}
           </Button>
         </form>
 
@@ -313,6 +320,8 @@ export function AdminsView() {
                 >
                   {a.role === "admin" ? (
                     <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden />
+                  ) : a.role === "contador" ? (
+                    <Receipt className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                   ) : (
                     <User className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                   )}
@@ -323,7 +332,7 @@ export function AdminsView() {
                       a.role === "admin" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
                     )}
                   >
-                    {a.role === "admin" ? "Admin" : "Empleado"}
+                    {ROLE_LABEL[a.role]}
                   </span>
                   {a.userId === myId && (
                     <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] tracking-[0.14em]">TÚ</span>

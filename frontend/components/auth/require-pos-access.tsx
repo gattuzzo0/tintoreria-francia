@@ -47,7 +47,7 @@ export function RequirePosAccess({ children }: { children: React.ReactNode }) {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Sin acceso al punto de venta</h1>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            Tu usuario no tiene rol de administrador o empleado. Pide a un administrador que te dé acceso.
+            Tu usuario no tiene un rol de personal. Pide a un administrador que te dé acceso.
           </p>
         </div>
         <Button variant="outline" onClick={signOut}>

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Banknote, Clock, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatDeliveryLong } from "@/lib/delivery";
+import { formatDeliveryLong, formatHour } from "@/lib/delivery";
 import { formatMoney, type PaymentMethod } from "@/lib/pos-data";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ const PAYMENTS: { id: PaymentMethod; label: string; icon: typeof CreditCard }[] 
 export function CheckoutConfirmDialog({
   open,
   deliveryDate,
+  deliveryHour,
   totalCents,
   payment,
   busy,
@@ -27,6 +28,7 @@ export function CheckoutConfirmDialog({
 }: {
   open: boolean;
   deliveryDate: string;
+  deliveryHour: number | null;
   totalCents: number;
   payment: PaymentMethod;
   busy: boolean;
@@ -72,7 +74,10 @@ export function CheckoutConfirmDialog({
               <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                 Fecha de entrega
               </dt>
-              <dd className="mt-0.5 text-base font-medium">{formatDeliveryLong(deliveryDate)}</dd>
+              <dd className="mt-0.5 text-base font-medium">
+                {formatDeliveryLong(deliveryDate)}
+                {deliveryHour != null ? ` · ${formatHour(deliveryHour)}` : ""}
+              </dd>
             </div>
             <div>
               <dt className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">

@@ -10,9 +10,10 @@ Si una regla genérica del repo (plantilla Vite, `VITE_*`, CRA) contradice esto,
 ## Operación
 
 - Una caja por sucursal. No diseñar para varias cajas editando a la vez.
-- Roles: `admin` y `empleado`. Contabilidad la ven ambos. Reportes, Catálogo y Administradores solo admin.
+- Roles: `admin`, `empleado` y `contador`. Contabilidad la ven los tres. El contador solo abre ese módulo (lista y archivos PDF/XML). Reportes, Catálogo y Administradores solo admin. Empleado sigue con Venta, Órdenes, Clientes y Contabilidad.
 - Dinero en centavos enteros. Los precios del catálogo ya incluyen IVA 16%. `subtotal = round(total / 1.16)`, `IVA = total − subtotal`. El recargo exprés va dentro del total, no se suma otra vez.
-- Pagos nuevos: `tarjeta`, `efectivo`, `pendiente` (Al recoger). `transferencia` solo se muestra en órdenes viejas y en reportes. La API rechaza escrituras nuevas. No reescribir el RPC `create_order` ni el check de la base: las filas históricas deben seguir siendo válidas.
+- Pagos nuevos: `tarjeta`, `efectivo`, `pendiente` (Al recoger). `transferencia` solo se muestra en órdenes viejas y en reportes. La API rechaza escrituras nuevas. No reescribir el RPC `create_order` ni el check de la base: las filas históricas deben seguir siendo válidas. Una migración nueva puede reemplazar la función; no se altera el check de pagos.
+- Extra urgente de hoy o del día siguiente pide la hora acordada, en pastillas de hora en punto. Hoy solo horas posteriores a la actual. El día siguiente, todo el horario de 9:00 a 19:00. Domingo cerrado. Se guarda en `orders.delivery_hour`. Sin la migración `000029` esa venta responde 503. Urgente en 2 días y la entrega regular no llevan hora. Las órdenes viejas quedan sin hora.
 - Al elegir color hay que escoger rayas, cuadros o ninguno. No cambia el precio. Se guarda en `order_lines.pattern`. Ninguno no se imprime. El kilo no lleva diseño. Migración `000024`; sin ella el alta responde 503. Las órdenes viejas quedan con patrón vacío.
 - Solo planchado es un interruptor en el selector de color, apagado por defecto. Cobra el 60% del precio de la prenda ya con relleno y largo, redondeado a centavos. Se guarda en `order_lines.press_only`. El kilo no lo lleva. En reportes sale como línea aparte. Migración `000025`.
 
@@ -50,6 +51,12 @@ Migraciones `000012` (rfc, wants_invoice) y `000013` (razón social, CP, régime
 
 `GET/POST /api/expenses`, `PATCH/DELETE /api/expenses/{id}`. El botón está dentro de Reportes, así que solo lo abre un admin. Cada fila: fecha, monto en centavos (el formulario pide pesos enteros), concepto y pago `efectivo` | `tarjeta` | `transferencia`. La sucursal es la de la caja y no se edita. Lista del mes de esa sucursal, total del mes. Sin categoría, archivo, IVA ni recurrente. Reportes no lo resta. Tabla `000015`; sin ella la API responde 503.
 
+## Inventario
+
+`GET/POST /api/supplies`, `DELETE /api/supplies/{id}`. Tercer botón dentro de Reportes, solo admin. Una fila es una apertura: fecha y un artículo ya dado de alta en esa sucursal. El API rechaza cualquier otro nombre. Sin cantidad, precio ni edición. La lista suelta no se muestra. Clic en el renglón abre la gráfica: cada barra es un par de fechas y los días entre esas dos aperturas. La sucursal es la de la caja. `GET` devuelve el historial de esa sucursal y, por artículo (sin distinguir mayúsculas), veces, última fecha y promedio de días entre aperturas. Una sola apertura no tiene promedio. Tabla `000026`; sin ella la API responde 503.
+
+`GET/POST /api/supplies/items`, `DELETE /api/supplies/items/{id}`. Alta de artículos que después se descuentan: nombre (máx. 80, único por sucursal sin distinguir mayúsculas), cantidad y unidad `litro` | `kilogramo` | `pza`. La cantidad se guarda en milésimas (20.5 L = 20500). Piezas solo enteras. Sin movimientos todavía. Tablas `000027` y columna `000028`; sin la tabla la lista responde 503 y las aperturas siguen; sin la columna, el alta responde 503.
+
 ## Reembolsos
 
 `POST /api/refunds`. Lo abre admin y empleado. Siempre devuelve el total en efectivo, una vez por orden, y solo si la orden es de la caja abierta, ya está cobrada en efectivo o tarjeta, y tiene nota (texto, foto o nota de staff). El botón está en el modal de notas. No hay panel aparte: se ven en Entregado con la marca Reembolso.
@@ -63,6 +70,6 @@ Al reembolsar, la orden pasa a entregado y en esa lista lleva la marca Reembolso
 - Órdenes (`frontend/lib/orders-board-cache.ts`): clave sucursal + estado + búsqueda. El scroll se guarda en la misma entrada.
 - Reportes (`frontend/lib/reports-cache.ts`): clave sucursal de la caja + desde + hasta. El reporte solo incluye órdenes de esa sucursal.
 
-Cobrar, reembolsar o cambiar estado borra las dos. Notas y fotos solo borran Órdenes. Clientes, Contabilidad, Gastos, Catálogo y Administradores se leen al abrirlos. Clientes, catálogo y tarifas de entrega quedan en memoria desde el arranque de la sesión.
+Cobrar, reembolsar o cambiar estado borra las dos. Notas y fotos solo borran Órdenes. Clientes, Contabilidad, Gastos, Inventario, Catálogo y Administradores se leen al abrirlos. Clientes, catálogo y tarifas de entrega quedan en memoria desde el arranque de la sesión.
 
 No bajar el plazo ni pasar la lista a la base para «refrescar siempre»: con una caja por sucursal el costo es una lectura de más, y el servidor ya rechaza con 409 si el estado cambió.

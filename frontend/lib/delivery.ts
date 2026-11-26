@@ -1,6 +1,35 @@
+import { BRANCH_CLOSE_HOUR, BRANCH_OPEN_HOUR } from "./branches";
+
 /** Regular: +5 a +15. Exprés: hoy, mañana o +2. Domingo cerrado: esa fecha pasa al lunes. */
 export const REGULAR_MIN_DAYS = 5;
 export const DELIVERY_MAX_DAYS = 15;
+
+/** Horas en punto que todavía se pueden acordar para extra urgente hoy. */
+export function sameDayHours(now = new Date()): number[] {
+  if (isSunday(now)) return [];
+  const start = Math.max(BRANCH_OPEN_HOUR, now.getHours() + 1);
+  if (start > BRANCH_CLOSE_HOUR) return [];
+  const hours: number[] = [];
+  for (let hour = start; hour <= BRANCH_CLOSE_HOUR; hour += 1) hours.push(hour);
+  return hours;
+}
+
+/** Horario de apertura, hora en punto. Lun–Sáb. */
+export function openHours(): number[] {
+  const hours: number[] = [];
+  for (let hour = BRANCH_OPEN_HOUR; hour <= BRANCH_CLOSE_HOUR; hour += 1) hours.push(hour);
+  return hours;
+}
+
+/** Hoy: solo lo que falta. Cualquier otro día abierto: todo el horario. */
+export function agreedHours(iso: string, now = new Date()): number[] {
+  if (iso === toIsoDate(now)) return sameDayHours(now);
+  return openHours();
+}
+
+export function formatHour(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
 
 /** YYYY-MM-DD → Date local a medianoche (sin desfase UTC). */
 export function parseIsoDate(iso: string): Date {
@@ -85,6 +114,13 @@ export function isAllowedDelivery(iso: string, express: boolean, today = new Dat
   if (rushPct("2026-10-22", true, rates, today) !== 15) throw new Error("rush two");
   if (rushPct("2026-10-26", true, rates, friday) !== 15) throw new Error("rush sunday");
   if (rushPct("2026-10-26", false, rates, today) !== 0) throw new Error("rush regular");
+  const afternoon = new Date(2026, 10, 25, 16, 36);
+  if (sameDayHours(afternoon).join(",") !== "17,18,19") throw new Error("sameDayHours afternoon");
+  if (sameDayHours(new Date(2026, 10, 25, 19, 0)).length !== 0) throw new Error("sameDayHours closed");
+  if (sameDayHours(new Date(2026, 10, 25, 8, 30))[0] !== 9) throw new Error("sameDayHours morning");
+  if (sameDayHours(new Date(2026, 10, 22, 12, 0)).length !== 0) throw new Error("sameDayHours sunday");
+  if (openHours().join(",") !== "9,10,11,12,13,14,15,16,17,18,19") throw new Error("openHours");
+  if (agreedHours("2026-11-26", afternoon).join(",") !== openHours().join(",")) throw new Error("agreed next");
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(".", "");

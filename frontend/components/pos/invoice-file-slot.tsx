@@ -52,7 +52,7 @@ export function InvoiceFileSlot({
   };
 
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="flex flex-col items-center gap-3 sm:gap-2">
       <button
         type="button"
         disabled={busy}
@@ -88,7 +88,7 @@ export function InvoiceFileSlot({
         }}
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium outline-none transition-transform focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-50",
-          loaded ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground",
+          loaded ? "border-green-700 bg-green-700 text-white" : "bg-card text-muted-foreground hover:text-foreground",
           over && "invoice-drop-target scale-110 border-dashed border-primary bg-primary text-primary-foreground",
         )}
       >
@@ -110,7 +110,7 @@ export function InvoiceFileSlot({
       {loaded && !busy && (
         <button
           type="button"
-          className="text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/30"
+          className="inline-flex min-h-8 items-center justify-center px-1 text-sm text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/30"
           onClick={() => {
             setError(null);
             void withAuth((token) => openInvoiceFile(token, folio, kind)).catch((err: unknown) => {

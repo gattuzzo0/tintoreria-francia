@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { CalendarDays, X, Zap } from "lucide-react";
-import { addDays, deliveryOn, deliveryWindow, formatDeliveryLong, formatDeliveryShort, formatMonthShort, isSunday, parseIsoDate, toIsoDate, type RushRates } from "@/lib/delivery";
+import { BRANCH_CLOSE_HOUR, BRANCH_OPEN_HOUR } from "@/lib/branches";
+import { addDays, agreedHours, deliveryOn, deliveryWindow, formatDeliveryLong, formatDeliveryShort, formatHour, formatMonthShort, isSunday, parseIsoDate, toIsoDate, type RushRates } from "@/lib/delivery";
 import { cn } from "@/lib/utils";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
@@ -129,14 +130,16 @@ const CHOICE =
 export function ExpressDeliveryDialog({
   open,
   value,
+  hour,
   rates,
   onSelect,
   onClose,
 }: {
   open: boolean;
   value: string;
+  hour: number | null;
   rates: RushRates;
-  onSelect: (iso: string) => void;
+  onSelect: (iso: string, hour: number | null) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -153,6 +156,7 @@ export function ExpressDeliveryDialog({
   const urgent = deliveryOn(2);
   const extra = value === today || value === next;
   const nextDay = value === next;
+  const hours = extra ? agreedHours(value) : [];
 
   return (
     <dialog
@@ -189,7 +193,7 @@ export function ExpressDeliveryDialog({
               type="button"
               aria-pressed={extra}
               onClick={() => {
-                if (!extra) onSelect(today);
+                if (!extra) onSelect(today, null);
               }}
               className={cn(CHOICE, extra ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted")}
             >
@@ -202,7 +206,7 @@ export function ExpressDeliveryDialog({
               type="button"
               aria-pressed={value === urgent}
               onClick={() => {
-                onSelect(urgent);
+                onSelect(urgent, null);
                 ref.current?.close();
               }}
               className={cn(
@@ -226,7 +230,7 @@ export function ExpressDeliveryDialog({
                   role="switch"
                   checked={!nextDay}
                   aria-label={nextDay ? "Entrega al día siguiente" : "Entrega hoy"}
-                  onChange={(e) => onSelect(deliveryOn(e.target.checked ? 0 : 1))}
+                  onChange={(e) => onSelect(deliveryOn(e.target.checked ? 0 : 1), null)}
                   className="peer sr-only"
                 />
                 <span className="h-6 w-11 rounded-full bg-muted peer-checked:bg-primary peer-focus-visible:ring-3 peer-focus-visible:ring-ring/30" />
@@ -236,9 +240,49 @@ export function ExpressDeliveryDialog({
             </div>
           )}
 
+          {extra && (
+            <div className="mt-4">
+              <p className="mb-2 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                Hora acordada
+              </p>
+              {hours.length === 0 ? (
+                <p className="text-center text-xs text-muted-foreground">
+                  Hoy ya no hay horario. Cerramos a las {formatHour(BRANCH_CLOSE_HOUR)}, de lunes a sábado.
+                </p>
+              ) : (
+                <div className="flex flex-wrap justify-center gap-2" role="group" aria-label="Hora acordada de entrega">
+                  {hours.map((slot) => {
+                    const selected = hour === slot;
+                    return (
+                      <button
+                        key={slot}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          onSelect(value, slot);
+                          ref.current?.close();
+                        }}
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 font-mono text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                          selected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "bg-card hover:bg-muted",
+                        )}
+                      >
+                        {formatHour(slot)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="mt-3 text-center text-xs text-muted-foreground">
             {extra
-              ? formatDeliveryLong(value)
+              ? hour != null && hours.includes(hour)
+                ? `${formatDeliveryLong(value)} · ${formatHour(hour)}`
+                : `${formatDeliveryLong(value)} · elige la hora, de ${formatHour(BRANCH_OPEN_HOUR)} a ${formatHour(BRANCH_CLOSE_HOUR)}`
               : value === urgent
                 ? `Entrega en 2 días · ${formatDeliveryLong(urgent)}`
                 : "Extra urgente: hoy o mañana. Urgente: en 2 días."}

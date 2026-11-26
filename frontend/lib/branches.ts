@@ -10,6 +10,10 @@ export type BranchInfo = {
   hours: string;
 };
 
+/** Lun–Sáb. La última hora de extra urgente hoy es el cierre. Domingo no hay entrega. */
+export const BRANCH_OPEN_HOUR = 9;
+export const BRANCH_CLOSE_HOUR = 19;
+
 /** Datos de sucursal. Editar aquí: dirección, teléfono, horario. */
 export const BRANCH_INFO: Record<Branch, BranchInfo> = {
   "Nereo Rdz.": {

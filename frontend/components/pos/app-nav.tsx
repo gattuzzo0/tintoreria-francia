@@ -27,7 +27,7 @@ const ITEMS = [
 
 export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View) => void }) {
   const { summary } = usePos();
-  const { isAdmin, email, fullName, signOut } = useAuth();
+  const { isAdmin, role, email, fullName, signOut } = useAuth();
   const branch = useSyncExternalStore(subscribeNoop, getBranchClient, getBranchServer);
   const readyCount = summary.listo;
   const incompleteInvoices = summary.incompleteInvoices;
@@ -40,7 +40,7 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
           aria-label="Secciones"
           className="fixed inset-x-0 bottom-0 z-30 flex gap-1 border-t bg-card p-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:static md:rounded-xl md:border md:pb-1"
         >
-          {ITEMS.filter((i) => isAdmin || !i.adminOnly).map(({ id, label, icon: Icon }) => {
+          {ITEMS.filter((i) => (role === "contador" ? i.id === "contabilidad" : isAdmin || !i.adminOnly)).map(({ id, label, icon: Icon }) => {
             const active = view === id;
             return (
               <button
@@ -85,15 +85,17 @@ export function AppNav({ view, onNavigate }: { view: View; onNavigate: (v: View)
           })}
         </nav>
         <div className="flex items-center gap-4">
-          <div className="hidden items-center gap-2 xl:flex">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-50" />
-              <span className="relative inline-flex size-2 rounded-full bg-primary" />
-            </span>
-            <span className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-              {branch ? `${branch} · Abierta` : "Caja · Abierta"}
-            </span>
-          </div>
+          {role !== "contador" && (
+            <div className="hidden items-center gap-2 xl:flex">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-50" />
+                <span className="relative inline-flex size-2 rounded-full bg-primary" />
+              </span>
+              <span className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                {branch ? `${branch} · Abierta` : "Caja · Abierta"}
+              </span>
+            </div>
+          )}
           <button
             type="button"
             onClick={signOut}
