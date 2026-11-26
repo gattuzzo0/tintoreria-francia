@@ -80,6 +80,8 @@ export type Order = {
   express: boolean;
   /** YYYY-MM-DD */
   deliveryDate: string;
+  /** Hora en punto de extra urgente hoy. null en el resto y en órdenes viejas. */
+  deliveryHour?: number | null;
   payment: PaymentMethod;
   wantsInvoice?: boolean;
   /** null en órdenes anteriores a la columna branch. */

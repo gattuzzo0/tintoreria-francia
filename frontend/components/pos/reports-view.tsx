@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Wallet } from "lucide-react";
+import { Loader2, Package, Wallet, type LucideIcon } from "lucide-react";
 import { formatMoney, PAYMENT_LABEL } from "@/lib/pos-data";
 import { readBranch } from "@/lib/branches";
 import { readReportCache, writeReportCache } from "@/lib/reports-cache";
 import { fetchReport, type Report } from "@/lib/reports-api";
 import { cn } from "@/lib/utils";
 import { ExpensesView } from "./expenses-view";
+import { InventoryView } from "./inventory-view";
 import { BarList, CARD, DailyChart, Heatmap, Kpi, LABEL, SectionTitle, Stat } from "./report-charts";
 import { usePos } from "./pos-provider";
 
@@ -22,6 +23,14 @@ const PRESETS: { id: Exclude<Preset, "custom">; label: string }[] = [
 ];
 
 const MAX_RANGE_DAYS = 366;
+
+type Section = "reportes" | "gastos" | "inventario";
+
+const SECTIONS: { id: Section; label: string; icon?: LucideIcon }[] = [
+  { id: "reportes", label: "Reportes" },
+  { id: "gastos", label: "Gastos", icon: Wallet },
+  { id: "inventario", label: "Inventario", icon: Package },
+];
 
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -68,7 +77,7 @@ export function ReportsView() {
     return branch ? readReportCache(branch, initial.start, initial.end) : null;
   });
   const [error, setError] = useState<string | null>(null);
-  const [showExpenses, setShowExpenses] = useState(false);
+  const [section, setSection] = useState<Section>("reportes");
   const invalid = rangeError(range.start, range.end);
   const fetchKey = !branch || invalid ? "" : `${branch}:${range.start}:${range.end}`;
   const [fetchedKey, setFetchedKey] = useState(fetchKey);
@@ -120,32 +129,28 @@ export function ReportsView() {
         </div>
         <div className="flex flex-1 justify-center self-center">
           <div className="flex gap-1 rounded-xl border bg-card p-1" role="group" aria-label="Sección">
-            <button
-              type="button"
-              onClick={() => setShowExpenses(false)}
-              aria-pressed={!showExpenses}
-              className={cn(
-                "inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30",
-                showExpenses ? "text-muted-foreground hover:text-foreground" : "bg-primary text-primary-foreground",
-              )}
-            >
-              Reportes
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowExpenses(true)}
-              aria-pressed={showExpenses}
-              className={cn(
-                "inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30",
-                showExpenses ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Wallet className="size-4" aria-hidden />
-              Gastos
-            </button>
+            {SECTIONS.map((item) => {
+              const Icon = item.icon;
+              const active = section === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSection(item.id)}
+                  aria-pressed={active}
+                  className={cn(
+                    "inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/30",
+                    active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {Icon && <Icon className="size-4" aria-hidden />}
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-        {!showExpenses && (
+        {section === "reportes" && (
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-wrap gap-1 rounded-xl border bg-card p-1" role="group" aria-label="Periodo">
             {PRESETS.map((p) => (
@@ -197,8 +202,10 @@ export function ReportsView() {
         )}
       </div>
 
-      {showExpenses ? (
+      {section === "gastos" ? (
         <ExpensesView />
+      ) : section === "inventario" ? (
+        <InventoryView />
       ) : invalid || error ? (
         <p role="alert" className="text-sm text-destructive">
           {invalid ?? error}

@@ -8,7 +8,7 @@ import { fetchMe, type Me } from "@/lib/pos-api";
 import { clearBranch } from "@/lib/branches";
 import { clearPersistedAuthSession, isSupabaseConfigured, supabase } from "@/lib/supabase";
 
-type StaffRole = "admin" | "empleado";
+type StaffRole = NonNullable<Me["role"]>;
 
 type AuthContextValue = {
   session: Session | null;

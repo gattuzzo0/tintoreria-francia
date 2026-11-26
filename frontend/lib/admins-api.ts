@@ -1,6 +1,6 @@
 import { apiFetch } from "./api-client";
 
-export type StaffRole = "admin" | "empleado";
+export type StaffRole = "admin" | "empleado" | "contador";
 
 export type Admin = { userId: string; phone: string | null; role: StaffRole; createdAt: string };
 

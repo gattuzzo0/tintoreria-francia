@@ -7,6 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field, field_validator
 from supabase_auth.errors import AuthApiError
 
@@ -20,7 +21,7 @@ admins_router = APIRouter()
 _PHONE_RE = re.compile(r"^[0-9]{10}$")
 
 
-StaffRole = Literal["admin", "empleado"]
+StaffRole = Literal["admin", "empleado", "contador"]
 
 
 class AdminOut(BaseModel):
@@ -67,7 +68,7 @@ def _list_admins() -> list[AdminOut]:
     rows = (
         sb.table("profiles")
         .select("id, role, created_at")
-        .in_("role", ["admin", "empleado"])
+        .in_("role", ["admin", "empleado", "contador"])
         .order("created_at")
         .execute()
         .data
@@ -132,6 +133,14 @@ async def create_admin(body: AdminCreate, admin: dict = Depends(require_admin_wr
                 status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La contraseña es demasiado débil."
             ) from None
         logger.exception("create_admin: Supabase Auth rechazó la alta by=%s", admin["user_id"])
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo crear el usuario") from None
+    except APIError as exc:
+        if exc.code == "23514":
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Falta el rol contador. Aplica la migración 000030 en Supabase.",
+            ) from None
+        logger.exception("create_admin falló by=%s", admin["user_id"])
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo crear el usuario") from None
     except Exception:
         logger.exception("create_admin falló by=%s", admin["user_id"])

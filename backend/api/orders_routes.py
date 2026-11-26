@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from api.deps import require_pos_staff, require_staff_writer
+from api.deps import require_accounting, require_pos_staff, require_staff_writer
 from api.invoice_file_routes import invoice_file_router
 from api.order_photo_routes import attach_order_photo, order_photo_router, prepare_order_photo, purge_order_photos
 from api.supabase_client import RpcError, call_rpc, get_supabase
@@ -38,7 +38,7 @@ PATTERNS = frozenset({"rayas", "cuadros", "ninguno"})
 Branch = Literal["Nereo Rdz.", "Sucursal móvil", "Centro"]
 
 _SELECT_PLAIN = (
-    "folio, customer_id, express, delivery_date, payment_method, wants_invoice, status, notes, branch, created_at, status_updated_at, "
+    "folio, customer_id, express, delivery_date, delivery_hour, payment_method, wants_invoice, status, notes, branch, created_at, status_updated_at, "
     "base_cents, surcharge_cents, surcharge_pct, subtotal_cents, tax_cents, total_cents, "
     "order_lines(service_id, name, unit, unit_price_cents, qty, color, fill, length, pattern, press_only), "
     "order_notes(id, body, created_at)"
@@ -93,6 +93,7 @@ class OrderCreate(BaseModel):
     express: bool = False
     # Rango (CDMX) lo valida create_order. Domingo se recorre al lunes.
     delivery_date: date = Field(alias="deliveryDate")
+    delivery_hour: int | None = Field(default=None, alias="deliveryHour")
     payment: PaymentMethod
     branch: Branch
     notes: str = Field(default="", max_length=2000)
@@ -105,6 +106,15 @@ class OrderCreate(BaseModel):
     def payment_ok(cls, v: str) -> str:
         if v == "transferencia":
             raise ValueError("Elige efectivo, tarjeta o al recoger.")
+        return v
+
+    @field_validator("delivery_hour")
+    @classmethod
+    def hour_ok(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 9 or v > 19:
+            raise ValueError("La hora de entrega es de 9:00 a 19:00")
         return v
 
     @field_validator("notes")
@@ -204,6 +214,7 @@ class OrderOut(BaseModel):
     lines: list[OrderLineOut]
     express: bool
     deliveryDate: str
+    deliveryHour: int | None = None
     payment: PaymentMethod
     wantsInvoice: bool = False
     branch: Branch | None
@@ -236,6 +247,10 @@ class OrderSummaryOut(BaseModel):
     entregado: int
     receivableCents: int
     nextFolio: int
+    incompleteInvoices: int
+
+
+class InvoiceGapOut(BaseModel):
     incompleteInvoices: int
 
 
@@ -335,6 +350,7 @@ def _row_to_order_out(row: dict) -> OrderOut:
         ],
         express=bool(row["express"]),
         deliveryDate=str(row["delivery_date"]),
+        deliveryHour=int(row["delivery_hour"]) if row.get("delivery_hour") is not None else None,
         payment=row["payment_method"],
         wantsInvoice=bool(row.get("wants_invoice")),
         branch=row.get("branch"),
@@ -362,16 +378,23 @@ def _query_orders(columns: str, folio: int):
     return get_supabase().table("orders").select(columns).eq("folio", folio).limit(1).execute()
 
 
+def _without_delivery_hour(columns: str) -> str:
+    return columns.replace("delivery_hour, ", "")
+
+
 def _without_new_columns(columns: str) -> str:
-    return columns.replace("wants_invoice, ", "").replace(", order_photos(id, created_at)", "")
+    return _without_delivery_hour(columns).replace("wants_invoice, ", "").replace(", order_photos(id, created_at)", "")
 
 
 def _fetch_order(folio: int):
     try:
         return _query_orders(_SELECT, folio)
     except Exception:
-        logger.warning("Lectura de orden sin columnas nuevas; aplica migraciones 000007 y 000012")
-        return _query_orders(_without_new_columns(_SELECT), folio)
+        try:
+            return _query_orders(_without_delivery_hour(_SELECT), folio)
+        except Exception:
+            logger.warning("Lectura de orden sin columnas nuevas; aplica migraciones 000007 y 000012")
+            return _query_orders(_without_new_columns(_SELECT), folio)
 
 
 def _update_status(folio: int, current: str, patch: dict):
@@ -540,9 +563,12 @@ def _fetch_page(order_status: str, branch: str, before: int | None, q: str) -> t
     try:
         rows = _rows_for_folios(columns, chosen)
     except Exception:
-        logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
-        fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
-        rows = _rows_for_folios(fallback, chosen)
+        try:
+            rows = _rows_for_folios(_without_delivery_hour(columns), chosen)
+        except Exception:
+            logger.warning("Listado sin columnas nuevas; aplica migraciones 000007 y 000012")
+            fallback = _DELIVERED_PLAIN if order_status == "entregado" else _without_new_columns(_SELECT)
+            rows = _rows_for_folios(fallback, chosen)
     _attach_refunds(rows)
     return rows, has_more
 
@@ -776,7 +802,7 @@ async def customer_order_stats(
 async def list_invoice_orders(
     year: int = Query(ge=2020, le=2100),
     month: int = Query(ge=1, le=12),
-    _staff: dict = Depends(require_pos_staff),
+    _staff: dict = Depends(require_accounting),
 ):
     try:
         return await asyncio.to_thread(_invoice_rows, year, month)
@@ -791,6 +817,19 @@ async def list_invoice_orders(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="No se pudieron leer las órdenes por facturar",
         ) from None
+
+
+@orders_router.get("/invoice-gap", response_model=InvoiceGapOut)
+async def invoice_gap(_staff: dict = Depends(require_accounting)):
+    try:
+        count = await asyncio.to_thread(_count_incomplete_invoices)
+    except Exception:
+        logger.exception("invoice_gap falló")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudo contar las facturas pendientes",
+        ) from None
+    return InvoiceGapOut(incompleteInvoices=count)
 
 
 @orders_router.get("/{folio}", response_model=OrderOut)
@@ -826,6 +865,8 @@ async def create_order(
         "p_branch": body.branch,
         "p_idempotency_key": idempotency_key,
     }
+    if body.delivery_hour is not None:
+        payload["p_delivery_hour"] = body.delivery_hour
     if body.photo_id:
         try:
             await asyncio.to_thread(prepare_order_photo, body.photo_id, staff["user_id"])
@@ -839,6 +880,11 @@ async def create_order(
     except RpcError as e:
         if e.code in ("22023", "22P02"):
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=e.message) from None
+        if e.code == "PGRST202" or "delivery_hour" in (e.message or ""):
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Falta la hora de entrega. Aplica la migración 000029 en Supabase.",
+            ) from None
         logger.exception("create_order RPC falló user_id=%s", staff["user_id"])
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="No se pudo registrar la orden") from None
     except Exception:

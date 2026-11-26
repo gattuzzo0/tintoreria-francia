@@ -12,10 +12,11 @@ from api.catalog_routes import catalog_router
 from api.config import is_database_configured
 from api.customers_routes import customers_router
 from api.expenses_routes import expenses_router
-from api.deps import STAFF_ROLES, fetch_profile
+from api.deps import ACCOUNTING_ROLES, fetch_profile
 from api.orders_routes import orders_router
 from api.refunds_routes import refunds_router
 from api.reports_routes import reports_router
+from api.supplies_routes import supplies_router
 from api.supabase_client import get_supabase
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ api_router.include_router(expenses_router, prefix="/expenses")
 api_router.include_router(orders_router, prefix="/orders")
 api_router.include_router(refunds_router, prefix="/refunds")
 api_router.include_router(reports_router, prefix="/reports")
+api_router.include_router(supplies_router, prefix="/supplies")
 
 
 @api_router.get("/health")
@@ -71,6 +73,6 @@ async def me(claims: dict = Depends(require_access_token)):
         "email": claims.get("email"),
         "fullName": profile.get("full_name") if profile else None,
         "role": role,
-        "canAccessPos": role in STAFF_ROLES,
+        "canAccessPos": role in ACCOUNTING_ROLES,
         "isAdmin": role == "admin",
     }

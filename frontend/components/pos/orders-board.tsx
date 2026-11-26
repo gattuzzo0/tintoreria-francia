@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { ArrowRight, Camera, ChevronDown, CircleAlert, CircleX, Loader2, Search, StickyNote, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getBranchInfo, readBranch } from "@/lib/branches";
-import { formatDeliveryShort } from "@/lib/delivery";
+import { formatDeliveryShort, formatHour } from "@/lib/delivery";
 import { fillingText } from "@/lib/fillings";
 import { lengthText } from "@/lib/lengths";
 import { ordersCacheKey, readOrdersCache, writeOrdersCache } from "@/lib/orders-board-cache";
@@ -613,7 +613,7 @@ function OrderPage({
                                 </span>
                               </>
                             ) : (
-                              <>Entrega {formatDeliveryShort(o.deliveryDate)}</>
+                              <>Entrega {formatDeliveryShort(o.deliveryDate)}{o.deliveryHour != null ? ` · ${formatHour(o.deliveryHour)}` : ""}</>
                             )}
                           </span>
                         </div>

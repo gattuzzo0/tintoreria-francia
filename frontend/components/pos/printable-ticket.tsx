@@ -3,7 +3,7 @@ import { fillingText } from "@/lib/fillings";
 import { lengthText } from "@/lib/lengths";
 import { garmentColor, patternText } from "@/lib/garment-colors";
 import { getBranchInfo } from "@/lib/branches";
-import { formatDeliveryLong } from "@/lib/delivery";
+import { formatDeliveryLong, formatHour } from "@/lib/delivery";
 import { formatMoney, orderSurchargePct, PAYMENT_LABEL, type Customer, type Order } from "@/lib/pos-data";
 import { ticketContentWidthMm, type TicketWidthMm } from "@/lib/ticket-width";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,10 @@ export function PrintableTicket({
 }) {
   const items = order.lines.reduce((n, l) => n + l.qty, 0);
   const created = new Date(order.createdAt);
-  const deliveryText = formatDeliveryLong(order.deliveryDate);
+  const deliveryText =
+    order.deliveryHour != null
+      ? `${formatDeliveryLong(order.deliveryDate)} · ${formatHour(order.deliveryHour)}`
+      : formatDeliveryLong(order.deliveryDate);
   const branchInfo = getBranchInfo(order.branch);
   const narrow = widthMm === 58;
   const contentMm = ticketContentWidthMm(widthMm);

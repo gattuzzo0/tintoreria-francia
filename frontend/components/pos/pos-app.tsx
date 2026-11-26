@@ -28,13 +28,16 @@ export function PosApp() {
 }
 
 function PosShell() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, role } = useAuth();
+  const accountant = role === "contador";
   const { status, loadError, reload, refreshSummary } = usePos();
-  const [view, setView] = useState<View>("venta");
+  const [view, setView] = useState<View>(accountant ? "contabilidad" : "venta");
+  const shown: View = accountant ? "contabilidad" : view;
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);
   const [lookupKey, setLookupKey] = useState(0);
 
   const navigate = (v: View) => {
+    if (accountant && v !== "contabilidad") return;
     setPendingPhone(null);
     setView(v);
   };
@@ -52,7 +55,7 @@ function PosShell() {
   return (
     <div className="min-h-dvh">
       <LoginIntro />
-      <AppNav view={view} onNavigate={navigate} />
+      <AppNav view={shown} onNavigate={navigate} />
       <main className="mx-auto w-full max-w-[1600px] px-4 pt-6 pb-24 md:pb-6 lg:px-6 lg:py-8">
         {status === "loading" ? (
           <div className="flex justify-center py-24">
@@ -67,7 +70,7 @@ function PosShell() {
           </div>
         ) : (
           <>
-            {view === "venta" && (
+            {shown === "venta" && (
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
                 <ServiceCatalog onRegisterPhone={registerFromSale} lookupKey={lookupKey} />
                 <TicketPanel
@@ -77,18 +80,18 @@ function PosShell() {
                 />
               </div>
             )}
-            {view === "ordenes" && <OrdersBoard />}
-            {view === "contabilidad" && <AccountingView />}
-            {view === "clientes" && (
+            {shown === "ordenes" && <OrdersBoard />}
+            {shown === "contabilidad" && <AccountingView />}
+            {shown === "clientes" && (
               <CustomersView
                 key={pendingPhone ?? "directorio"}
                 prefillPhone={pendingPhone}
                 onReturnToSale={() => navigate("venta")}
               />
             )}
-            {view === "reportes" && isAdmin && <ReportsView />}
-            {view === "catalogo" && isAdmin && <CatalogAdmin />}
-            {view === "admins" && isAdmin && <AdminsView />}
+            {shown === "reportes" && isAdmin && <ReportsView />}
+            {shown === "catalogo" && isAdmin && <CatalogAdmin />}
+            {shown === "admins" && isAdmin && <AdminsView />}
           </>
         )}
       </main>

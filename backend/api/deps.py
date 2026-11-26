@@ -14,6 +14,7 @@ from api.supabase_client import get_supabase
 logger = logging.getLogger(__name__)
 
 STAFF_ROLES = ("admin", "empleado")
+ACCOUNTING_ROLES = ("admin", "empleado", "contador")
 
 
 def fetch_profile(user_id: str) -> dict | None:
@@ -44,6 +45,14 @@ async def require_pos_staff(claims: dict = Depends(require_access_token)) -> dic
     staff = await _load_staff(claims)
     if staff["role"] not in STAFF_ROLES:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Se requiere rol de administrador o empleado")
+    return staff
+
+
+async def require_accounting(claims: dict = Depends(require_access_token)) -> dict:
+    """Contabilidad: admin, empleado y contador."""
+    staff = await _load_staff(claims)
+    if staff["role"] not in ACCOUNTING_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Se requiere acceso a contabilidad")
     return staff
 
 
@@ -84,3 +93,8 @@ async def require_staff_writer(staff: dict = Depends(require_pos_staff)) -> dict
 async def require_admin_writer(admin: dict = Depends(require_admin)) -> dict:
     enforce_write_rate_limit(admin["user_id"])
     return admin
+
+
+async def require_accounting_writer(staff: dict = Depends(require_accounting)) -> dict:
+    enforce_write_rate_limit(staff["user_id"])
+    return staff

@@ -8,7 +8,7 @@ export type Me = {
   userId: string;
   email: string | null;
   fullName: string | null;
-  role: "admin" | "empleado" | null;
+  role: "admin" | "empleado" | "contador" | null;
   canAccessPos: boolean;
   isAdmin: boolean;
 };
@@ -17,6 +17,7 @@ export type CreateOrderBody = {
   customerId: string;
   express: boolean;
   deliveryDate: string;
+  deliveryHour?: number | null;
   payment: PaymentMethod;
   branch: Branch;
   notes: string;
@@ -91,6 +92,9 @@ export const fetchOrderPage = (
 export const fetchOrderSummary = (token: string, branch: string) =>
   apiFetch<OrderSummary>(`/api/orders/summary?${new URLSearchParams({ branch })}`, token);
 
+export const fetchInvoiceGap = (token: string) =>
+  apiFetch<{ incompleteInvoices: number }>("/api/orders/invoice-gap", token);
+
 export const fetchCustomerStats = (token: string, branch: string) =>
   apiFetch<CustomerStat[]>(`/api/orders/stats?${new URLSearchParams({ branch })}`, token);
 
@@ -157,6 +161,54 @@ export const updateExpense = (token: string, id: string, body: ExpenseInput) =>
 
 export const deleteExpense = (token: string, id: string) =>
   apiFetch<void>(`/api/expenses/${encodeURIComponent(id)}`, token, { method: "DELETE" });
+
+export type SupplyOpening = {
+  id: string;
+  branch: Branch;
+  item: string;
+  openedOn: string;
+};
+
+export type SupplyStat = {
+  item: string;
+  count: number;
+  lastOpened: string;
+  avgDays: number | null;
+};
+
+export type SupplyBoard = {
+  openings: SupplyOpening[];
+  stats: SupplyStat[];
+};
+
+export const fetchSupplies = (token: string, branch: string) =>
+  apiFetch<SupplyBoard>(`/api/supplies?${new URLSearchParams({ branch })}`, token);
+
+export const createSupplyOpening = (
+  token: string,
+  body: { branch: Branch; item: string; openedOn: string },
+) => apiFetch<SupplyOpening>("/api/supplies", token, { method: "POST", body });
+
+export type SupplyUnit = "litro" | "kilogramo" | "pza";
+
+export type SupplyItem = {
+  id: string;
+  branch: Branch;
+  name: string;
+  unit: SupplyUnit;
+  quantity: string;
+};
+
+export const fetchSupplyItems = (token: string, branch: string) =>
+  apiFetch<SupplyItem[]>(`/api/supplies/items?${new URLSearchParams({ branch })}`, token);
+
+export const createSupplyItem = (
+  token: string,
+  body: { branch: Branch; name: string; unit: SupplyUnit; quantity: string },
+) => apiFetch<SupplyItem>("/api/supplies/items", token, { method: "POST", body });
+
+export const deleteSupplyItem = (token: string, id: string) =>
+  apiFetch<void>(`/api/supplies/items/${encodeURIComponent(id)}`, token, { method: "DELETE" });
 
 export const fetchInvoiceOrders = (token: string, year: number, month: number) =>
   apiFetch<InvoiceOrder[]>(

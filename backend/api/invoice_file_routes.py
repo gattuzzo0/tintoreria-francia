@@ -10,7 +10,7 @@ from postgrest.exceptions import APIError
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.config import is_storage_configured
-from api.deps import require_pos_staff, require_staff_writer
+from api.deps import require_accounting, require_accounting_writer
 from api.invoice_files import COLUMN, CONTENT_TYPE, MAX_BYTES, invoice_object_key, sniff_invoice
 from api.r2_client import delete_object, object_meta, presign_get, presign_put, read_object_prefix
 from api.supabase_client import get_supabase
@@ -100,7 +100,7 @@ def _expected_key(folio: int, file_id: str, kind: str) -> str:
 async def presign_invoice_file(
     folio: int,
     body: InvoicePresignIn,
-    staff: dict = Depends(require_staff_writer),
+    staff: dict = Depends(require_accounting_writer),
 ):
     _require_storage()
     await _invoice_order(folio)
@@ -119,7 +119,7 @@ async def presign_invoice_file(
 async def confirm_invoice_file(
     folio: int,
     body: InvoiceConfirmIn,
-    staff: dict = Depends(require_staff_writer),
+    staff: dict = Depends(require_accounting_writer),
 ):
     _require_storage()
     row = await _invoice_order(folio)
@@ -164,7 +164,7 @@ async def confirm_invoice_file(
 async def read_invoice_file(
     folio: int,
     kind: InvoiceKind,
-    _staff: dict = Depends(require_pos_staff),
+    _staff: dict = Depends(require_accounting),
 ):
     _require_storage()
     row = await _invoice_order(folio)
